@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 434 1216" width="434" height="1216" font-family="'Helvetica Neue', Arial, sans-serif" role="img" aria-label="Avela brand identity guide">
+  <defs>
+    <linearGradient id="petal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EBB7B3"/>
+      <stop offset="1" stop-color="#CB8183"/>
+    </linearGradient>
+    <!-- leaf mark, base at (0,0), grows upward; colour via currentColor -->
+    <g id="leaf" fill="currentColor">
+      <path transform="rotate(-42)" d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+      <path transform="rotate(42)"  d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+      <path d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+    </g>
+    <g id="leafg" fill="url(#petal)">
+      <path transform="rotate(-42)" d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+      <path transform="rotate(42)"  d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+      <path d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+    </g>
+  </defs>
+
+  <rect width="434" height="1216" fill="#F7EEE7"/>
+
+  <!-- ============ MAIN LOGO ============ -->
+  <rect y="0" width="434" height="286" fill="#F5EADF"/>
+  <text x="24" y="36" font-size="11" letter-spacing="2.5" fill="#A2836F">MAIN LOGO</text>
+  <use href="#leafg" transform="translate(217,150) scale(1.85)"/>
+  <text x="217" y="212" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="74" fill="#5A382C" letter-spacing="1">Avela</text>
+  <text x="217" y="250" text-anchor="middle" font-size="15" fill="#6B4A3C" letter-spacing="0.4">Make every moment meaningful.</text>
+
+  <!-- ============ APP ICON ============ -->
+  <rect y="286" width="434" height="184" fill="#F1E2D7"/>
+  <text x="24" y="322" font-size="11" letter-spacing="2.5" fill="#A2836F">APP ICON</text>
+  <rect x="118" y="352" width="88" height="88" rx="22" fill="#F0DDD3"/>
+  <use href="#leaf" transform="translate(162,420) scale(1.15)" color="#D4898B"/>
+  <rect x="228" y="352" width="88" height="88" rx="22" fill="#4A2E25"/>
+  <use href="#leaf" transform="translate(272,420) scale(1.15)" color="#F3E7DE"/>
+
+  <!-- ============ ALTERNATE LOGO VARIATIONS ============ -->
+  <rect y="470" width="434" height="180" fill="#F5EADF"/>
+  <text x="24" y="506" font-size="11" letter-spacing="2.5" fill="#A2836F">ALTERNATE LOGO VARIATIONS</text>
+  <use href="#leaf" transform="translate(56,586) scale(0.9)" color="#D4898B"/>
+  <text x="80" y="582" font-family="Georgia,'Times New Roman',serif" font-size="38" fill="#5A382C">Avela</text>
+  <text x="82" y="606" font-size="11" fill="#6B4A3C" letter-spacing="0.3">Make every moment meaningful.</text>
+  <line x1="292" y1="520" x2="292" y2="620" stroke="#E2D1C5" stroke-width="1"/>
+  <circle cx="362" cy="568" r="46" fill="none" stroke="#C89A94" stroke-width="1.5"/>
+  <text x="362" y="585" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="46" fill="#5A382C">A</text>
+  <use href="#leafg" transform="translate(342,600) scale(0.34)"/>
+
+  <!-- ============ MONOCHROME VERSIONS ============ -->
+  <rect y="650" width="434" height="166" fill="#F1E2D7"/>
+  <text x="24" y="686" font-size="11" letter-spacing="2.5" fill="#A2836F">MONOCHROME VERSIONS</text>
+  <use href="#leaf" transform="translate(56,758) scale(0.9)" color="#2E2A27"/>
+  <text x="80" y="754" font-family="Georgia,'Times New Roman',serif" font-size="38" fill="#2E2A27">Avela</text>
+  <text x="82" y="778" font-size="11" fill="#2E2A27" letter-spacing="0.3">Make every moment meaningful.</text>
+  <line x1="292" y1="694" x2="292" y2="794" stroke="#DDCBBF" stroke-width="1"/>
+  <rect x="320" y="702" width="84" height="84" rx="22" fill="#2E2A27"/>
+  <use href="#leaf" transform="translate(362,764) scale(1.1)" color="#FFFFFF"/>
+
+  <!-- ============ FAVICON / SOCIAL AVATAR ============ -->
+  <rect y="816" width="434" height="150" fill="#F5EADF"/>
+  <text x="24" y="850" font-size="11" letter-spacing="2.5" fill="#A2836F">FAVICON</text>
+  <text x="212" y="850" font-size="11" letter-spacing="2.5" fill="#A2836F">SOCIAL MEDIA AVATAR</text>
+  <line x1="192" y1="866" x2="192" y2="952" stroke="#E2D1C5" stroke-width="1"/>
+  <rect x="58" y="878" width="66" height="66" rx="16" fill="#F0DDD3"/>
+  <use href="#leaf" transform="translate(91,928) scale(0.82)" color="#D4898B"/>
+  <circle cx="300" cy="908" r="44" fill="#D9A0A0"/>
+  <use href="#leaf" transform="translate(300,932) scale(1.05)" color="#FBF2EC"/>
+
+  <!-- ============ USAGE EXAMPLES ============ -->
+  <rect y="966" width="434" height="250" fill="#F1E2D7"/>
+  <text x="24" y="1000" font-size="11" letter-spacing="2.5" fill="#A2836F">USAGE EXAMPLES</text>
+
+  <!-- phone mockup -->
+  <rect x="14" y="1024" width="128" height="178" rx="14" fill="#3A2A24"/>
+  <rect x="62" y="1070" width="32" height="5" rx="2.5" fill="#5a463e"/>
+  <rect x="56" y="1088" width="44" height="44" rx="12" fill="#F0DDD3"/>
+  <use href="#leaf" transform="translate(78,1123) scale(0.6)" color="#D4898B"/>
+  <text x="78" y="1160" text-anchor="middle" font-family="Georgia,serif" font-size="15" fill="#F3E7DE">Avela</text>
+
+  <!-- stationery card mockup -->
+  <rect x="152" y="1024" width="128" height="178" rx="8" fill="#ECDBD1"/>
+  <rect x="152" y="1024" width="128" height="58" rx="8" fill="#E3CFC4"/>
+  <use href="#leafg" transform="translate(216,1118) scale(0.7)"/>
+  <text x="216" y="1150" text-anchor="middle" font-family="Georgia,serif" font-size="24" fill="#5A382C">Avela</text>
+  <text x="216" y="1168" text-anchor="middle" font-size="7.5" fill="#7a5a4c" letter-spacing="0.3">Make every moment meaningful.</text>
+
+  <!-- gift box mockup -->
+  <rect x="290" y="1024" width="130" height="178" rx="8" fill="#E7CFC6"/>
+  <rect x="320" y="1095" width="70" height="60" rx="6" fill="#D9BBB0"/>
+  <rect x="320" y="1095" width="70" height="16" rx="4" fill="#CBA99D"/>
+  <rect x="350" y="1095" width="10" height="60" fill="#C49A8E"/>
+  <path d="M355,1095 C342,1082 332,1086 340,1096 C330,1092 330,1102 346,1098 Z" fill="#CBA99D"/>
+  <use href="#leaf" transform="translate(355,1082) scale(0.3)" color="#8A5C4E"/>
+</svg>

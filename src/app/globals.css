@@ -1,26 +1,164 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ============================================================
+   Avela design tokens
+   Money is warm but sober; boldness is spent only on the seal.
+   ============================================================ */
+@theme {
+  /* ---- Palette ---- */
+  --color-porcelain: #faf6f0; /* page background, warm, not cliché cream */
+  --color-shell: #f2ebe1; /* raised / muted surface */
+  --color-ink: #26201d; /* primary text, warm near-black */
+  --color-ink-soft: #7a6b61; /* secondary text */
+  --color-evergreen: #184a3c; /* primary, trust, growth, "go" */
+  --color-evergreen-deep: #10342a;
+  --color-coral: #ec6a4e; /* accent, celebration, CTA */
+  --color-coral-deep: #d9543a;
+  --color-champagne: #e7c690; /* premium warm, seals, milestones */
+  --color-blush: #f3d9cf; /* soft tag, birthday / baby shower */
+  --color-line: #e8ddcf; /* hairline */
+
+  /* ---- Radius ---- */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+
+  /* ---- Shadow ---- */
+  --shadow-keepsake: 0 2px 4px rgba(38, 32, 29, 0.04), 0 10px 28px rgba(38, 32, 29, 0.07);
+  --shadow-keepsake-sm: 0 1px 2px rgba(38, 32, 29, 0.05), 0 4px 12px rgba(38, 32, 29, 0.05);
+
+  /* ---- Type ---- */
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-body: var(--font-hanken), system-ui, sans-serif;
+
+  /* ---- Easing ---- */
+  --ease-keepsake: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ============================================================
+     Dote, the live brand direction (from Figma). Teal/petrol,
+     MuseoModerno wordmark over Inter Tight UI.
+     ============================================================ */
+  --font-museo: var(--font-museo), "MuseoModerno", system-ui, sans-serif;
+  --font-dote: var(--font-inter-tight), "Inter Tight", system-ui, sans-serif;
+  --font-dote-input: var(--font-inter), "Inter", system-ui, sans-serif;
+  --font-dote-body: var(--font-figtree), "Figtree", system-ui, sans-serif;
+  --font-italiana: var(--font-italiana), "Italiana", Georgia, serif;
+  /* Hero event title, KyivType Sans Light (self-hosted; see @font-face below).
+     Falls back to the Dote sans stack until the font file is added. */
+  --font-kyiv: "KyivType Sans", var(--font-inter-tight), "Inter Tight", system-ui, sans-serif;
+
+  --color-petrol-ink: #001317; /* deep background */
+  --color-petrol: #003c49; /* active toggle / dark surface */
+  --color-teal: #00829f; /* primary action */
+  --color-teal-ink: #f4fffe; /* text on teal */
+  --color-sky-line: #cbe7f0; /* input border */
+  --color-field: #fbfbfb; /* input fill */
+  --color-field-alt: #f8f8f8; /* toggle track */
+  --color-field-line: #e2e2e2; /* toggle border */
+  --color-dote-label: #221a10; /* field labels */
+  --color-dote-sub: #585858; /* subcopy */
+  --color-dote-sub2: #6e6558; /* subcopy (verify) */
+  --color-dote-muted: #ababab; /* inactive toggle text */
+  --color-dote-link: #00ab7d; /* legal links */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* KyivType Sans Light, the hero event-title face (Dmytro Rastvortsev, free,
+   NoDerivatives: self-host the official file as-is, don't subset/convert).
+   Drop the file at /public/fonts/KyivTypeSans-Light.woff2 and it activates
+   automatically; until then the --font-kyiv stack falls back to Inter Tight. */
+@font-face {
+  font-family: "KyivType Sans";
+  src: url("/fonts/KyivTypeSans-Light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ---- Base ---- */
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-porcelain);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* The serif carries the emotional register, names, headings, wishes.
+   Never UI labels or numbers. In @layer base so font-* utilities (e.g.
+   the Dote screens' Inter Tight headings) can override it. */
+@layer base {
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: 500;
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Money always uses tabular figures. */
+.money {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+::selection {
+  background: var(--color-champagne);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-champagne);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* A single, gentle entrance used across the site. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-rise {
+  animation: rise 0.6s var(--ease-keepsake) both;
+}
+
+@keyframes pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-pop {
+  animation: pop 0.5s var(--ease-keepsake) both;
 }

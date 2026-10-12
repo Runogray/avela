@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" width="320" height="180" role="img" aria-label="Avela — Make every moment meaningful.">
+  <defs>
+    <linearGradient id="petalL" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EBB7B3"/>
+      <stop offset="1" stop-color="#CB8183"/>
+    </linearGradient>
+  </defs>
+  <!-- leaf mark -->
+  <g transform="translate(160,54) scale(1.25)" fill="url(#petalL)">
+    <path transform="rotate(-42)" d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+    <path transform="rotate(42)" d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+    <path d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+  </g>
+  <!-- wordmark -->
+  <text x="160" y="124" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
+        font-size="66" fill="#5A382C" letter-spacing="1">Avela</text>
+  <!-- tagline -->
+  <text x="160" y="156" text-anchor="middle" font-family="'Helvetica Neue', Arial, sans-serif"
+        font-size="14" fill="#6B4A3C" letter-spacing="0.5">Make every moment meaningful.</text>
+</svg>

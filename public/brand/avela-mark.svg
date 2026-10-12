@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-26 -34 52 40" width="120" height="92" role="img" aria-label="Avela leaf mark">
+  <defs>
+    <linearGradient id="petal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EBB7B3"/>
+      <stop offset="1" stop-color="#CB8183"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#petal)">
+    <path transform="rotate(-42)" d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+    <path transform="rotate(42)" d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+    <path d="M0,0 C8,-9 8,-24 0,-31 C-8,-24 -8,-9 0,0 Z"/>
+  </g>
+</svg>
