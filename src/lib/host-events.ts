@@ -37,6 +37,7 @@ export interface HostEvent {
   title: string;
   description: string;
   occasion: ApiOccasion;
+  category: string;
   cover_image: string;
   starts_at: string; // ISO
   venue: string;
@@ -117,6 +118,7 @@ type EventWrite = Partial<{
   title: string;
   description: string;
   occasion: ApiOccasion;
+  category: string;
   cover_image: string;
   starts_at: string;
   venue: string;
@@ -183,6 +185,7 @@ export function hostEventToFlow(e: HostEvent) {
       name: w.name,
       emoji: "🎁",
       image: w.image || null,
+      link: w.link || "",
       anyAmount: false,
       amount: Math.round((w.price_kobo || 0) / 100),
       hideContrib: false,
@@ -191,6 +194,7 @@ export function hostEventToFlow(e: HostEvent) {
   ];
   return {
     occasion: occApiToUi(e.occasion),
+    category: e.category,
     title: e.title,
     venue: e.venue,
     dress: e.dress_code,
@@ -210,12 +214,14 @@ export type FlowItem = {
   name: string;
   emoji?: string;
   image?: string | null;
+  link?: string; // optional store/vendor link (physical gifts)
   anyAmount?: boolean;
   amount?: number; // naira
 };
 
 export type FlowPayload = {
   occasion: string;
+  category?: string;
   title: string;
   location: string;
   dress: string;
@@ -235,6 +241,7 @@ export async function createEventFromFlow(p: FlowPayload): Promise<HostEvent> {
     title: p.title || "Your celebration",
     description: p.description || "",
     occasion: occUiToApi(p.occasion),
+    category: p.category || "",
     cover_image: p.cover || "",
     starts_at: dateTimeToIso(p.date, p.time),
     venue: p.location || "",
@@ -253,6 +260,7 @@ export async function createEventFromFlow(p: FlowPayload): Promise<HostEvent> {
       await addWishlistItem(event.id, {
         name: it.name || "Gift",
         image: it.image || "",
+        link: it.link || "",
         price_kobo: naira ? naira * 100 : null,
       });
     }
@@ -276,6 +284,7 @@ export async function updateEventFromFlow(id: string, p: FlowPayload): Promise<H
     title: p.title || "Your celebration",
     description: p.description || "",
     occasion: occUiToApi(p.occasion),
+    category: p.category || "",
     cover_image: p.cover || "",
     starts_at: dateTimeToIso(p.date, p.time),
     venue: p.location || "",
@@ -301,7 +310,7 @@ export async function updateEventFromFlow(id: string, p: FlowPayload): Promise<H
         await addGoal(id, body);
       }
     } else {
-      const body = { name: it.name || "Gift", image: it.image || "", price_kobo: naira ? naira * 100 : null };
+      const body = { name: it.name || "Gift", image: it.image || "", link: it.link || "", price_kobo: naira ? naira * 100 : null };
       if (itemIds.has(it.id)) {
         await updateWishlistItem(it.id, body);
         keptItems.add(it.id);

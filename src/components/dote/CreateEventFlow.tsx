@@ -61,6 +61,7 @@ type WishItem = {
   name: string;
   emoji: string;
   image: string | null; // physical gift photo, when uploaded
+  link?: string; // optional store/vendor link (physical gifts only)
   anyAmount: boolean;
   amount: number;
   hideContrib: boolean;
@@ -127,6 +128,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
             name: it.name,
             emoji: it.emoji || "🎁",
             image: it.image ?? null,
+            link: it.link ?? "",
             anyAmount: !!it.anyAmount,
             amount: it.amount || 0,
             hideContrib: !!it.hideContrib,
@@ -197,6 +199,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
           name: it.name,
           emoji: it.emoji,
           image: it.image ? await toCoverDataURL(it.image) : null,
+          link: it.link,
           anyAmount: it.anyAmount,
           amount: it.amount,
           hideContrib: it.hideContrib,
@@ -204,7 +207,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
         }))
       );
       const payload = {
-        occasion, title, location, dress, time, date, description,
+        occasion, category, title, location, dress, time, date, description,
         cover, gallery, items: slimItems, publish: true,
       };
 
@@ -1268,6 +1271,25 @@ function emojiForGift(name: string, type: GiftType): string {
   return match ? match[1] : "🎁"; // the box fallback
 }
 
+/** A store link is optional. If given it must be a usable URL: returns the
+ * normalized link (with protocol) when valid, "" for no link, or null when the
+ * text isn't a real link (so the host is flagged and can't proceed). */
+function normalizeStoreLink(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return "";
+  const withProto = /^https?:\/\//i.test(t) ? t : `https://${t}`;
+  try {
+    const u = new URL(withProto);
+    // Require a real dotted hostname so "shop" or "not a link" is rejected.
+    if (!u.hostname.includes(".") || u.hostname.startsWith(".") || u.hostname.endsWith(".")) {
+      return null;
+    }
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 function AddWishlistSheet({
   editing,
   onClose,
@@ -1282,13 +1304,19 @@ function AddWishlistSheet({
   const [giftType, setGiftType] = useState<GiftType>(editing?.type ?? "monetary");
   const [name, setName] = useState(editing?.type === "physical" ? editing.name : "");
   const [image, setImage] = useState<string | null>(editing?.image ?? null);
+  const [link, setLink] = useState(editing?.link ?? "");
   const [anyAmount, setAnyAmount] = useState(editing?.anyAmount ?? false);
   const [amount, setAmount] = useState(editing?.amount ?? 1000000);
   const [hideContrib, setHideContrib] = useState(editing?.hideContrib ?? true);
   const [hideTotal, setHideTotal] = useState(editing?.hideTotal ?? true);
   const imgRef = useRef<HTMLInputElement | null>(null);
 
+  // Validate the optional store link. null ⇒ the text isn't a real URL.
+  const normalizedLink = giftType === "physical" ? normalizeStoreLink(link) : "";
+  const linkInvalid = normalizedLink === null;
+
   function submit() {
+    if (linkInvalid) return; // flagged below; can't proceed
     const finalName = giftType === "physical" ? name.trim() || "Gift" : "Cash gift";
     onSubmit({
       id: editing?.id ?? Math.random().toString(36).slice(2),
@@ -1296,6 +1324,7 @@ function AddWishlistSheet({
       name: finalName,
       emoji: emojiForGift(finalName, giftType),
       image: giftType === "physical" ? image : null,
+      link: giftType === "physical" ? (normalizedLink || "") : "",
       anyAmount,
       amount,
       hideContrib,
@@ -1390,6 +1419,24 @@ function AddWishlistSheet({
                     </span>
                   )}
                 </button>
+                {/* Optional vendor/store link so guests can find where to buy it */}
+                <input
+                  value={link}
+                  onChange={(e) => setLink(e.target.value)}
+                  type="url"
+                  inputMode="url"
+                  aria-invalid={linkInvalid}
+                  placeholder="Link to store (optional)"
+                  className={cn(
+                    "h-[64px] w-full rounded-[16px] border bg-white px-4 font-dote-input text-[16px] text-[#1a1a1a] outline-none placeholder:text-[#c3c3c3]",
+                    linkInvalid ? "border-[#e12525] focus:border-[#e12525]" : "border-[#e8f1f3] focus:border-teal"
+                  )}
+                />
+                {linkInvalid && (
+                  <p className="px-1 text-[13px] text-[#e12525]">
+                    Enter a valid store link, e.g. https://store.com/item.
+                  </p>
+                )}
               </div>
             )}
 
@@ -1458,7 +1505,7 @@ function AddWishlistSheet({
         </div>
 
         <div className="pt-6">
-          <PrimaryButton onClick={submit}>
+          <PrimaryButton onClick={submit} disabled={linkInvalid}>
             {editing ? "Save changes" : "Add to wishlist"}
           </PrimaryButton>
         </div>
