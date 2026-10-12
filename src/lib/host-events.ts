@@ -64,25 +64,35 @@ export function occUiToApi(o: string): ApiOccasion {
 }
 
 /* ------------------------------ date helpers ------------------------------ */
-/** "YYYY-MM-DD" from an ISO timestamp (local). */
+// Events are shown in West Africa Time (UTC+1, no DST). We interpret entered
+// times as WAT and display in WAT everywhere, so the dashboard and the public
+// page always agree.
+const WAT_TZ = "Africa/Lagos";
+
+/** "YYYY-MM-DD" (in WAT) from an ISO timestamp. */
 export function isoToDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const p = new Intl.DateTimeFormat("en-CA", {
+    timeZone: WAT_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(d);
+  const get = (t: string) => p.find((x) => x.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
-/** "HH:MM" from an ISO timestamp (local). */
+/** "HH:MM" (24h, in WAT) from an ISO timestamp. */
 export function isoToTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const p = new Intl.DateTimeFormat("en-GB", {
+    timeZone: WAT_TZ, hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => p.find((x) => x.type === t)?.value ?? "00";
+  return `${get("hour")}:${get("minute")}`;
 }
-/** Combine "YYYY-MM-DD" + "HH:MM" (local) into an ISO string for the API. */
+/** Combine "YYYY-MM-DD" + "HH:MM" (interpreted as WAT) into an ISO string. */
 export function dateTimeToIso(date: string, time: string): string {
-  const d = date
-    ? new Date(`${date}T${time || "00:00"}:00`)
-    : new Date();
+  // +01:00 pins the input to WAT regardless of the browser's own timezone.
+  const d = date ? new Date(`${date}T${time || "00:00"}:00+01:00`) : new Date();
   return (Number.isNaN(d.getTime()) ? new Date() : d).toISOString();
 }
 

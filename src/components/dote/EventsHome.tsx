@@ -685,6 +685,10 @@ function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
 /* ------------------------------ desktop --------------------------- */
 
 export function TopBar({ section = "Events" }: { section?: string }) {
+  const [name, setName] = useState("");
+  useEffect(() => {
+    setName(getSession().name || "");
+  }, []);
   return (
     <header className="flex h-[89px] shrink-0 items-center border-b border-[#bdcfd3] bg-[#f6f6f6]/50">
       <div className="flex w-[251px] shrink-0 items-center justify-between px-6">
@@ -708,7 +712,7 @@ export function TopBar({ section = "Events" }: { section?: string }) {
           <UserAvatar className="size-12 rounded-full object-cover" />
           <span className="leading-tight">
             <span className="block text-[14px] text-[#494949]">Hello,</span>
-            <span className="block text-[16px] font-medium text-black">Jesica David</span>
+            <span className="block text-[16px] font-medium text-black">{name || "there"}</span>
           </span>
         </Link>
       </div>

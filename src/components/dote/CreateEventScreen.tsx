@@ -7,7 +7,7 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { BottomNav } from "./BottomNav";
 import { DoteLogo } from "./Logo";
-import { TopBar } from "./EventsHome";
+import { TopBar, Sidebar } from "./EventsHome";
 
 type Occasion = {
   key: string;
@@ -93,7 +93,7 @@ export function CreateEventScreen() {
       <div className="hidden h-screen flex-col overflow-hidden lg:flex">
         <TopBar section="" />
         <div className="flex min-h-0 flex-1">
-          <Sidebar />
+          <Sidebar active="new" />
           <main className="flex min-h-0 flex-1 justify-center overflow-y-auto px-8 pt-[60px]">
             <div className="flex w-[742px] shrink-0 flex-col items-center">
               <Heading className="text-center" size="desktop" />
@@ -260,57 +260,3 @@ function AccountChip() {
   );
 }
 
-/* ---------- desktop chrome ---------- */
-
-const SIDEBAR = [
-  { key: "events", label: "Events created", icon: "/dote/sidebar/events.svg", href: "/events" },
-  { key: "wallet", label: "Wallet", icon: "/dote/sidebar/wallet.svg", href: "/wallet" },
-  { key: "new", label: "New celebration", icon: "/dote/sidebar/new.svg", href: "/create", active: true },
-  { key: "invites", label: "Invites received", icon: "/dote/sidebar/invites.svg", href: "/invites" },
-  { key: "notification", label: "Notification", icon: "/dote/sidebar/notification.svg", href: "/notifications" },
-  { key: "settings", label: "Settings", icon: "/dote/sidebar/settings.svg", href: "/profile" },
-] as const;
-
-function Sidebar() {
-  return (
-    <aside className="w-[251px] shrink-0 overflow-y-auto border-r border-[#bdcfd3] px-6 pt-[52px]">
-      <p className="text-[16px] font-medium tracking-[-0.66px] text-[#878787]">Menu</p>
-      <nav className="mt-6 flex flex-col gap-1">
-        {SIDEBAR.map((item) => {
-          const on = "active" in item && item.active;
-          return (
-            <Link
-              key={item.key}
-              href={"href" in item ? (item.href as string) : "#"}
-              className={cn(
-                "flex items-center gap-3 rounded-[18px] text-[12px] font-medium",
-                on ? "bg-teal py-[10px] pl-[18px] pr-6 text-white" : "px-[18px] py-4 text-[#616161]"
-              )}
-            >
-              {on ? (
-                <span
-                  aria-hidden
-                  className="h-6 w-6 bg-white"
-                  style={{
-                    WebkitMaskImage: `url(/dote/nav-active/${item.key}.svg)`,
-                    maskImage: `url(/dote/nav-active/${item.key}.svg)`,
-                    WebkitMaskRepeat: "no-repeat",
-                    maskRepeat: "no-repeat",
-                    WebkitMaskPosition: "center",
-                    maskPosition: "center",
-                    WebkitMaskSize: "contain",
-                    maskSize: "contain",
-                  }}
-                />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={item.icon} alt="" className="h-6 w-6" />
-              )}
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-    </aside>
-  );
-}

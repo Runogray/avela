@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { DoteLogo } from "./Logo";
 import { BackArrow } from "./BackArrow";
 import { createEventFromFlow, getHostEvent, hostEventToFlow, updateEventFromFlow } from "@/lib/host-events";
+import { getSession } from "@/lib/auth";
 import { isNetworkError } from "@/lib/api";
 
 /* ------------------------------------------------------------------ *
@@ -1542,6 +1543,10 @@ function DesktopTopBar({
   onNew: () => void;
   onCloseSheet: () => void;
 }) {
+  const [name, setName] = useState("");
+  useEffect(() => {
+    setName(getSession().name || "");
+  }, []);
   const stepIdx = STEPS.indexOf(step);
   // Breadcrumb trail: (Edit event | New) › every step up to the current one › (Add item).
   const crumbs: { label: string; onClick: () => void }[] = [
@@ -1584,7 +1589,7 @@ function DesktopTopBar({
           <UserAvatar className="size-12 rounded-full object-cover" />
           <span className="leading-tight">
             <span className="block text-[14px] text-[#494949]">Hello,</span>
-            <span className="block text-[16px] font-medium text-black">Jesica David</span>
+            <span className="block text-[16px] font-medium text-black">{name || "there"}</span>
           </span>
         </Link>
       </div>

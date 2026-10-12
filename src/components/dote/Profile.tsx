@@ -24,7 +24,7 @@ type View = "home" | "email" | "otp" | "name" | "password" | "gender" | "support
 
 const GENDERS = ["Female", "Male", "Non-binary", "Prefer not to say"];
 
-const DEFAULTS = { name: "Jesica David", email: "Adaezekonkwo@gmail.com", joined: "13th Dec, 2025" };
+const DEFAULTS = { name: "", email: "", joined: "" };
 
 function loadAuth(): Auth {
   try {

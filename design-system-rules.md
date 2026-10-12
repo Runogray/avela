@@ -1,4 +1,4 @@
-# Figma → Code Integration Rules (Wishwell Frontend)
+# Figma → Code Integration Rules (Avela Frontend)
 
 Rules for translating Figma designs into this codebase via the Figma MCP. Read this
 before generating any component or page from a Figma frame. The goal is output that
