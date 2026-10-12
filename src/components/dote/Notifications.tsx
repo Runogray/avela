@@ -240,7 +240,7 @@ export function Notifications() {
     >
       {/* ============================ MOBILE ============================ */}
       <div className="flex min-h-screen flex-col lg:hidden">
-        <header className="flex items-center justify-between bg-white px-6 py-[18px]">
+        <header className="sticky top-0 z-20 flex items-center justify-between bg-white px-6 py-[18px]">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -279,7 +279,7 @@ export function Notifications() {
           <main className="min-h-0 flex-1 overflow-y-auto px-8 py-10">
             <div className="mx-auto w-full max-w-[720px]">
               <div className="mb-6 flex items-center justify-between">
-                <h1 className="flex items-center gap-2 text-[22px] font-medium tracking-[-0.8px] text-[#1c1611]">
+                <h1 className="flex items-center gap-2 font-dote text-[22px] font-medium tracking-[-0.8px] text-[#1c1611]">
                   Notifications
                   {unread > 0 && (
                     <span className="grid min-w-5 place-items-center rounded-full bg-teal px-1.5 text-[11px] font-semibold text-teal-ink">

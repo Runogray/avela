@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DoteLogo } from "./Logo";
 import { BackArrow } from "./BackArrow";
+import { getHostEvent, hostEventToFlow } from "@/lib/host-events";
 
 /* ------------------------------------------------------------------ *
  * Dote, Event Overview (the published celebration page; host reaches
@@ -33,6 +34,7 @@ const RECIPIENT: Record<string, string> = {
 };
 type StoredEvent = {
   id: string;
+  slug?: string;
   title: string;
   occasion: string;
   category?: string;
@@ -114,14 +116,35 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
   const [contribTotals, setContribTotals] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    try {
-      const all: StoredEvent[] = JSON.parse(localStorage.getItem("dote.events") || "[]");
-      setEv(all.find((e) => e.id === id) ?? null);
-    } catch {
-      setEv(null);
-    }
-    setLoaded(true);
-  }, [id]);
+    let alive = true;
+    (async () => {
+      // Host "Manage" (non-guest): the dashboard list is API-backed, so load
+      // the live event by id from the API. Fall back to local storage for
+      // offline/mock events and for the guest invite view.
+      if (!guest) {
+        try {
+          const e = await getHostEvent(id);
+          if (alive) {
+            setEv({ id: e.id, slug: e.slug, ...hostEventToFlow(e) });
+            setLoaded(true);
+          }
+          return;
+        } catch {
+          /* fall through to local storage */
+        }
+      }
+      try {
+        const all: StoredEvent[] = JSON.parse(localStorage.getItem("dote.events") || "[]");
+        if (alive) setEv(all.find((e) => e.id === id) ?? null);
+      } catch {
+        if (alive) setEv(null);
+      }
+      if (alive) setLoaded(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [id, guest]);
 
   // When a signed-in user opens an invite link, record it in their
   // Invites list so the event shows up there automatically (no need to
@@ -177,7 +200,10 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
   const swatches = dressSwatches(ev.dress);
   const gallery = (ev.gallery ?? []).slice(0, 4);
   const items = ev.items ?? [];
-  const slug = ev.title.replace(/\s+/g, "");
+  // The shareable guest page is the public event page (/e/<slug>), which is
+  // API-backed and works for anyone. Fall back to the legacy /i/<id> view only
+  // for local/mock events that have no server slug.
+  const inviteHref = ev.slug ? `/e/${ev.slug}` : `/i/${ev.id}`;
 
   // Host: remove a gift from the wishlist (persist + live update).
   function deleteGift(itemId: string) {
@@ -260,7 +286,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
               type="button"
               onClick={() => {
                 try {
-                  navigator.clipboard?.writeText(`${window.location.origin}/i/${ev.id}`);
+                  navigator.clipboard?.writeText(`${window.location.origin}${inviteHref}`);
                   setCopied(true);
                   setTimeout(() => setCopied(false), 1500);
                 } catch {

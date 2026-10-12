@@ -31,14 +31,16 @@ const SCREEN_BG =
 export function CreateEventScreen() {
   const router = useRouter();
   const [active, setActive] = useState(1); // mobile carousel centre (Birthday)
+  const [dir, setDir] = useState<1 | -1>(1); // last swipe direction (for the swap animation)
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const touchX = useRef<number | null>(null);
 
   const n = OCCASIONS.length;
 
-  function go(dir: 1 | -1) {
-    setActive((a) => (a + dir + n) % n);
+  function go(d: 1 | -1) {
+    setDir(d);
+    setActive((a) => (a + d + n) % n);
   }
   function onTouchStart(e: React.TouchEvent) {
     touchX.current = e.touches[0].clientX;
@@ -62,17 +64,24 @@ export function CreateEventScreen() {
   return (
     <div className="min-h-screen font-dote" style={{ background: SCREEN_BG }}>
       {/* ============ MOBILE ============ */}
-      <div className="mx-auto flex min-h-screen w-full max-w-[440px] flex-col overflow-x-hidden lg:hidden">
-        <header className="flex items-center justify-between px-6 py-[18px]">
+      <div className="flex min-h-screen w-full flex-col overflow-x-hidden lg:hidden">
+        <header className="sticky top-0 z-20 flex items-center justify-between px-6 py-[18px]">
           <DoteLogo />
           <AccountChip />
         </header>
 
-        <main className="flex flex-1 flex-col items-center">
+        <main className="flex flex-1 flex-col items-center pb-28">
           <Heading className="px-6" size="mobile" />
 
           <div className="mt-8 w-full overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-            <div className="mx-auto flex w-[598px] items-center justify-center gap-5">
+            {/* Full-width flex + justify-center keeps the active card dead-centre
+                on any width; the peeks bleed off symmetrically and are clipped
+                by the overflow-hidden parent (coverflow look). */}
+            <div
+              key={active}
+              className="animate-occ-swap flex w-full items-center justify-center gap-5"
+              style={{ ["--occ-from" as string]: dir === 1 ? "32px" : "-32px" }}
+            >
               <Peek occ={OCCASIONS[(active + n - 1) % n]} onClick={() => go(-1)} />
               <OccasionCard
                 occ={activeOcc}
@@ -86,7 +95,9 @@ export function CreateEventScreen() {
           <CreateButton className="mt-8" disabled={!selected} onClick={createEvent} />
         </main>
 
-        <BottomNav active="new" />
+        <div className="fixed inset-x-0 bottom-0">
+          <BottomNav active="new" />
+        </div>
       </div>
 
       {/* ============ DESKTOP ============ */}

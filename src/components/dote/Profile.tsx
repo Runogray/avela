@@ -311,7 +311,7 @@ export function Profile() {
           <Sidebar active="settings" />
           <main className="min-h-0 flex-1 overflow-y-auto px-8 py-10">
             <div className="mx-auto w-full max-w-[720px]">
-              <h1 className="mb-6 text-[22px] font-medium tracking-[-0.8px] text-[#1c1611]">Profile</h1>
+              <h1 className="mb-6 font-dote text-[22px] font-medium tracking-[-0.8px] text-[#1c1611]">Profile</h1>
               {/* profile card */}
               <div className="rounded-[20px] bg-white p-8">{hero}</div>
               {/* sections */}

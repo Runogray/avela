@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { DoteLogo } from "./Logo";
 import { BackArrow } from "./BackArrow";
+import { getHostEvent, hostEventToFlow } from "@/lib/host-events";
 
 /* ------------------------------------------------------------------ *
  * Dote, Gallery (the celebration's photo gallery; reached from the
@@ -38,14 +39,35 @@ export function ManageGallery({ id, guest = false }: { id: string; guest?: boole
   const [lightbox, setLightbox] = useState<number | null>(null);
 
   useEffect(() => {
-    try {
-      const all: StoredEvent[] = JSON.parse(localStorage.getItem("dote.events") || "[]");
-      setEv(all.find((e) => e.id === id) ?? null);
-    } catch {
-      setEv(null);
-    }
-    setLoaded(true);
-  }, [id]);
+    let alive = true;
+    (async () => {
+      // Host gallery (non-guest): load the live event by id from the API,
+      // matching the Event Overview page. Fall back to local storage for
+      // offline/mock events and the guest view.
+      if (!guest) {
+        try {
+          const e = await getHostEvent(id);
+          if (alive) {
+            setEv({ id: e.id, ...hostEventToFlow(e) });
+            setLoaded(true);
+          }
+          return;
+        } catch {
+          /* fall through to local storage */
+        }
+      }
+      try {
+        const all: StoredEvent[] = JSON.parse(localStorage.getItem("dote.events") || "[]");
+        if (alive) setEv(all.find((e) => e.id === id) ?? null);
+      } catch {
+        if (alive) setEv(null);
+      }
+      if (alive) setLoaded(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [id, guest]);
 
   if (!loaded) return null;
   if (!ev) {

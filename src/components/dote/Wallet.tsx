@@ -110,9 +110,9 @@ export function Wallet() {
   return (
     <div className="min-h-screen font-dote" style={{ background: SCREEN_BG }}>
       {/* ===================== MOBILE (≤ lg) ===================== */}
-      <div className="mx-auto flex min-h-screen w-full max-w-[440px] flex-col lg:hidden">
+      <div className="flex min-h-screen w-full flex-col lg:hidden">
         {/* header */}
-        <header className="flex items-center justify-between bg-white px-6 py-[18px]">
+        <header className="sticky top-0 z-20 flex items-center justify-between bg-white px-6 py-[18px]">
           <Link href="/profile" aria-label="Settings" className="transition hover:opacity-80">
             <UserAvatar className="size-[50px] rounded-full object-cover" />
           </Link>
@@ -122,7 +122,7 @@ export function Wallet() {
           </button>
         </header>
 
-        <div className="flex-1 px-6 pt-[22px]">
+        <div className="flex-1 px-6 pb-28 pt-[22px]">
           {/* balance card */}
           <div className="flex h-[126px] flex-col justify-center rounded-[20px] bg-black px-6">
             <p className="text-[12px] tracking-[-0.24px] text-[#b4b4b4]">Available wallet balance</p>
@@ -157,7 +157,7 @@ export function Wallet() {
             </button>
           </div>
 
-          <div className="mt-1 flex flex-col pb-6">
+          <div className="mt-1 flex flex-col">
             {txs.length === 0 && (
               <p className="py-8 text-center text-[13px] text-[#8a8177]">No transactions yet.</p>
             )}
@@ -167,7 +167,9 @@ export function Wallet() {
           </div>
         </div>
 
-        <BottomNav active="wallet" />
+        <div className="fixed inset-x-0 bottom-0">
+          <BottomNav active="wallet" />
+        </div>
       </div>
 
       {/* ===================== DESKTOP (lg +) ===================== */}

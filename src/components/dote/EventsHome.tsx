@@ -200,7 +200,7 @@ export function EventsHome() {
       )}
 
       {/* ============================= MOBILE ============================= */}
-      <div className="mx-auto flex min-h-screen w-full max-w-[440px] flex-col lg:hidden">
+      <div className="flex min-h-screen w-full flex-col lg:hidden">
         {searching ? (
           <SearchHeader
             value={query}
@@ -214,7 +214,7 @@ export function EventsHome() {
           <ListHeader onQuickActions={() => setQuickOpen(true)} onSearch={() => setSearching(true)} />
         )}
 
-        <main className="flex-1 px-6 pb-6">
+        <main className="flex-1 px-6 pb-28">
           <div className="mb-4 pt-[6px]">
             <p className="flex items-center gap-1 text-[12px] leading-[22px] text-[#4a4a4a]">
               Hi, {firstName} <span className="text-[16px] leading-none">👋</span>
@@ -238,7 +238,9 @@ export function EventsHome() {
           )}
         </main>
 
-        <BottomNav active="events" />
+        <div className="fixed inset-x-0 bottom-0">
+          <BottomNav active="events" />
+        </div>
       </div>
 
       {/* ============================ DESKTOP ============================ */}
@@ -351,7 +353,7 @@ function SuccessBanner({ show, onClose }: { show: boolean; onClose: () => void }
 
 function ListHeader({ onQuickActions, onSearch }: { onQuickActions: () => void; onSearch: () => void }) {
   return (
-    <header className="flex items-center justify-between bg-white px-6 py-[18px]">
+    <header className="sticky top-0 z-20 flex items-center justify-between bg-white px-6 py-[18px]">
       <Link href="/profile" aria-label="Settings" className="transition hover:opacity-80">
         <UserAvatar className="size-[50px] rounded-full object-cover" />
       </Link>
@@ -377,7 +379,7 @@ function SearchHeader({
   onClose: () => void;
 }) {
   return (
-    <header className="flex items-center gap-3 bg-white px-6 py-[18px]">
+    <header className="sticky top-0 z-20 flex items-center gap-3 bg-white px-6 py-[18px]">
       <div className="flex h-[52px] flex-1 items-center gap-2 rounded-[16px] border border-[#e8f1f3] bg-white px-4">
         <SearchIcon className="size-5 shrink-0 text-[#9a9a9a]" />
         <input

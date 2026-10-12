@@ -7,6 +7,7 @@ import { BottomNav } from "./BottomNav";
 import { TopBar, Sidebar } from "./EventsHome";
 import { addInvite as addInviteApi, listInvites } from "@/lib/engagement";
 import { isoToDate, isoToTime, occApiToUi } from "@/lib/host-events";
+import { getSession } from "@/lib/auth";
 
 /* ------------------------------------------------------------------ *
  * Dote, Invites received (Figma 14559:19812 desktop / 14559:19905
@@ -76,6 +77,12 @@ export function Invites() {
   // we fall back to the local (dote.invites) list.
   const [serverInvites, setServerInvites] = useState<StoredEvent[] | null>(null);
   const [slugById, setSlugById] = useState<Record<string, string>>({});
+  const [firstName, setFirstName] = useState("there");
+
+  useEffect(() => {
+    const n = (getSession().name || "").trim().split(/\s+/)[0];
+    if (n) setFirstName(n);
+  }, []);
 
   async function loadFromApi(): Promise<boolean> {
     try {
@@ -200,7 +207,7 @@ export function Invites() {
       {/* ============================ MOBILE ============================ */}
       <div className="flex min-h-screen flex-col lg:hidden">
         {/* header */}
-        <header className="flex items-center justify-between bg-white px-6 py-[18px]">
+        <header className="sticky top-0 z-20 flex items-center justify-between bg-white px-6 py-[18px]">
           {searchOpen ? (
             <div className="flex w-full items-center gap-3">
               <div className="flex h-[52px] flex-1 items-center gap-2 rounded-[16px] border border-[#b8d8df] bg-[#f6fdff] px-4">
@@ -287,9 +294,9 @@ export function Invites() {
             <div className="flex flex-wrap items-end justify-between gap-6">
               <div className="flex flex-col">
                 <p className="flex items-center gap-1 text-[12px] leading-[22px] text-[#4a4a4a]">
-                  Hi, Daniel <span aria-hidden>👋</span>
+                  Hi, {firstName} <span aria-hidden>👋</span>
                 </p>
-                <h1 className="text-[22px] font-medium tracking-[-0.8px] text-[#1c1611]">View your invites</h1>
+                <h1 className="font-dote text-[22px] font-medium tracking-[-0.8px] text-[#1c1611]">View your invites</h1>
               </div>
               <div className="flex items-center gap-5">
                 <div className="w-[322px]">
