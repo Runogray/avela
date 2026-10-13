@@ -1,26 +1,22 @@
-import { SiteHeader } from "@/components/site/SiteHeader";
-import { SiteFooter } from "@/components/site/SiteFooter";
-import { ButtonLink } from "@/components/ui/Button";
+import Link from "next/link";
+import { DoteLogo } from "@/components/dote/Logo";
 
 export default function NotFound() {
   return (
-    <>
-      <SiteHeader />
-      <main className="mx-auto flex max-w-[1080px] flex-col items-center px-6 py-28 text-center">
-        <span className="text-5xl">🎈</span>
-        <h1 className="mt-6 text-[clamp(32px,5vw,48px)]">This page floated away.</h1>
-        <p className="mt-3 max-w-[42ch] text-[17px] text-ink-soft">
-          The celebration you&apos;re looking for isn&apos;t here, the link may be old, or
-          the host may have taken the page down.
-        </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <ButtonLink href="/">Back home</ButtonLink>
-          <ButtonLink href="/e/amara-tobi" variant="secondary">
-            See an example page
-          </ButtonLink>
-        </div>
-      </main>
-      <SiteFooter />
-    </>
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#FFFEF7] px-6 text-center font-dote">
+      <DoteLogo />
+      <h1 className="font-dote text-[24px] font-medium tracking-[-0.6px] text-[#1c1611]">
+        This page floated away.
+      </h1>
+      <p className="max-w-[40ch] text-[15px] text-[#5c5c5c]">
+        The link may be old, or the host may have taken the page down.
+      </p>
+      <Link
+        href="/"
+        className="mt-2 rounded-[50px] bg-teal px-6 py-3 text-[14px] font-medium text-teal-ink transition hover:brightness-95"
+      >
+        Back to Avela
+      </Link>
+    </main>
   );
 }
