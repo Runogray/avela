@@ -29,6 +29,8 @@ export interface ApiGoal {
   target_kobo: number;
   raised_kobo: number;
   progress_pct: number;
+  hide_contributions: boolean;
+  hide_total: boolean;
 }
 
 export interface HostEvent {
@@ -141,7 +143,10 @@ export function addWishlistItem(eventId: string, body: Partial<ApiWishlistItem>)
     method: "POST", body,
   });
 }
-export function addGoal(eventId: string, body: { name: string; target_kobo: number }) {
+export function addGoal(
+  eventId: string,
+  body: { name: string; target_kobo: number; hide_contributions?: boolean; hide_total?: boolean },
+) {
   return apiFetch<ApiGoal>(`/host/events/${eventId}/goals/`, { method: "POST", body });
 }
 export function addEventPhoto(eventId: string, image: string, order = 0) {
@@ -156,7 +161,10 @@ export function updateWishlistItem(itemId: string, body: Partial<ApiWishlistItem
 export function deleteWishlistItem(itemId: string) {
   return apiFetch<void>(`/host/wishlist-items/${itemId}/`, { method: "DELETE" });
 }
-export function updateGoal(goalId: string, body: { name?: string; target_kobo?: number }) {
+export function updateGoal(
+  goalId: string,
+  body: { name?: string; target_kobo?: number; hide_contributions?: boolean; hide_total?: boolean },
+) {
   return apiFetch<ApiGoal>(`/host/goals/${goalId}/`, { method: "PATCH", body });
 }
 export function deleteGoal(goalId: string) {
@@ -176,8 +184,8 @@ export function hostEventToFlow(e: HostEvent) {
       image: null as string | null,
       anyAmount: !g.target_kobo,
       amount: Math.round((g.target_kobo || 0) / 100),
-      hideContrib: false,
-      hideTotal: false,
+      hideContrib: g.hide_contributions,
+      hideTotal: g.hide_total,
     })),
     ...e.wishlist_items.map((w) => ({
       id: w.id,
@@ -207,6 +215,84 @@ export function hostEventToFlow(e: HostEvent) {
   };
 }
 
+/* ----------------------------- public (guest) ----------------------------- */
+/** A published event as a guest sees it — no auth. Matches the DRF
+ * PublicEventSerializer; goals carry the hide-contribution flags. */
+export interface PublicApiEvent {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  occasion: ApiOccasion;
+  cover_image: string;
+  starts_at: string;
+  venue: string;
+  dress_code: string;
+  host_first_name: string;
+  accepts_money: boolean;
+  accepts_wishlist: boolean;
+  accepts_wishes: boolean;
+  wishlist_items: ApiWishlistItem[];
+  goals: ApiGoal[];
+  gallery: string[];
+}
+
+/** Public read of a published event by slug (guest invite page). */
+export function getPublicEvent(slug: string) {
+  return apiFetch<PublicApiEvent>(`/events/${slug}/`, { auth: false });
+}
+
+/** Guest reserves a physical wishlist item (locks it so no one double-buys). */
+export function reserveWishlistItem(
+  itemId: string,
+  body: { guest_name: string; show_name: boolean },
+) {
+  return apiFetch(`/wishlist-items/${itemId}/reserve/`, { method: "POST", body, auth: false });
+}
+
+/** Map a public event into the overview's display shape (mirrors
+ * hostEventToFlow; carries the real raised totals + hide flags for guests). */
+export function publicEventToFlow(e: PublicApiEvent) {
+  const items = [
+    ...e.goals.map((g) => ({
+      id: g.id,
+      type: "monetary" as const,
+      name: g.name,
+      emoji: "💵",
+      image: null as string | null,
+      anyAmount: !g.target_kobo,
+      amount: Math.round((g.target_kobo || 0) / 100),
+      raised: Math.round((g.raised_kobo || 0) / 100),
+      hideContrib: g.hide_contributions,
+      hideTotal: g.hide_total,
+    })),
+    ...e.wishlist_items.map((w) => ({
+      id: w.id,
+      type: "physical" as const,
+      name: w.name,
+      emoji: "🎁",
+      image: w.image || null,
+      link: w.link || "",
+      anyAmount: false,
+      amount: Math.round((w.price_kobo || 0) / 100),
+      hideContrib: false,
+      hideTotal: false,
+    })),
+  ];
+  return {
+    occasion: occApiToUi(e.occasion),
+    title: e.title,
+    venue: e.venue,
+    dress: e.dress_code,
+    date: isoToDate(e.starts_at),
+    time: isoToTime(e.starts_at),
+    description: e.description,
+    cover: e.cover_image || null,
+    gallery: (e.gallery || []).filter(Boolean),
+    items,
+  };
+}
+
 /* --------------------------- create-flow adapter -------------------------- */
 export type FlowItem = {
   id: string;
@@ -217,6 +303,8 @@ export type FlowItem = {
   link?: string; // optional store/vendor link (physical gifts)
   anyAmount?: boolean;
   amount?: number; // naira
+  hideContrib?: boolean; // monetary: hide per-person contribution amounts
+  hideTotal?: boolean; // monetary: hide the total raised
 };
 
 export type FlowPayload = {
@@ -255,6 +343,8 @@ export async function createEventFromFlow(p: FlowPayload): Promise<HostEvent> {
       await addGoal(event.id, {
         name: it.name || "Contribution",
         target_kobo: it.anyAmount ? 0 : naira * 100,
+        hide_contributions: !!it.hideContrib,
+        hide_total: !!it.hideTotal,
       });
     } else {
       await addWishlistItem(event.id, {
@@ -302,7 +392,12 @@ export async function updateEventFromFlow(id: string, p: FlowPayload): Promise<H
   for (const it of p.items) {
     const naira = Math.max(0, Math.round(it.amount || 0));
     if (it.type === "monetary") {
-      const body = { name: it.name || "Contribution", target_kobo: it.anyAmount ? 0 : naira * 100 };
+      const body = {
+        name: it.name || "Contribution",
+        target_kobo: it.anyAmount ? 0 : naira * 100,
+        hide_contributions: !!it.hideContrib,
+        hide_total: !!it.hideTotal,
+      };
       if (goalIds.has(it.id)) {
         await updateGoal(it.id, body);
         keptGoals.add(it.id);

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DoteLogo } from "./Logo";
 import { BackArrow } from "./BackArrow";
-import { getHostEvent, hostEventToFlow } from "@/lib/host-events";
+import { Toast } from "./Toast";
+import { getHostEvent, hostEventToFlow, getPublicEvent, publicEventToFlow, reserveWishlistItem } from "@/lib/host-events";
 
 /* ------------------------------------------------------------------ *
  * Dote, Event Overview (the published celebration page; host reaches
@@ -19,6 +20,7 @@ type StoredItem = {
   name: string;
   emoji: string;
   image: string | null;
+  link?: string; // store/vendor link (physical gifts)
   anyAmount: boolean;
   amount: number;
   raised?: number;
@@ -106,6 +108,8 @@ const THEMES = [
 export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const params = useSearchParams();
+  const [savedBanner, setSavedBanner] = useState(false);
   const [ev, setEv] = useState<StoredEvent | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -119,8 +123,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
     let alive = true;
     (async () => {
       // Host "Manage" (non-guest): the dashboard list is API-backed, so load
-      // the live event by id from the API. Fall back to local storage for
-      // offline/mock events and for the guest invite view.
+      // the live event by id from the host API.
       if (!guest) {
         try {
           const e = await getHostEvent(id);
@@ -132,7 +135,21 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
         } catch {
           /* fall through to local storage */
         }
+      } else {
+        // Guest invite page: the route param is the event slug. Load the
+        // published event from the public API (works with no login).
+        try {
+          const e = await getPublicEvent(id);
+          if (alive) {
+            setEv({ id: e.id, slug: e.slug, ...publicEventToFlow(e) });
+            setLoaded(true);
+          }
+          return;
+        } catch {
+          /* fall through to local storage */
+        }
       }
+      // Fallback for offline / local mock events.
       try {
         const all: StoredEvent[] = JSON.parse(localStorage.getItem("dote.events") || "[]");
         if (alive) setEv(all.find((e) => e.id === id) ?? null);
@@ -145,6 +162,16 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
       alive = false;
     };
   }, [id, guest]);
+
+  // Show a success toast after an edit saved (CreateEventFlow redirects here
+  // with ?updated=1), then strip the flag from the URL.
+  useEffect(() => {
+    if (guest || params.get("updated") !== "1") return;
+    setSavedBanner(true);
+    window.history.replaceState(null, "", `/events/${id}`);
+    const t = setTimeout(() => setSavedBanner(false), 5000);
+    return () => clearTimeout(t);
+  }, [params, guest, id]);
 
   // When a signed-in user opens an invite link, record it in their
   // Invites list so the event shows up there automatically (no need to
@@ -200,10 +227,10 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
   const swatches = dressSwatches(ev.dress);
   const gallery = (ev.gallery ?? []).slice(0, 4);
   const items = ev.items ?? [];
-  // The shareable guest page is the public event page (/e/<slug>), which is
-  // API-backed and works for anyone. Fall back to the legacy /i/<id> view only
-  // for local/mock events that have no server slug.
-  const inviteHref = ev.slug ? `/e/${ev.slug}` : `/i/${ev.id}`;
+  // The shareable guest page is the Avela guest view at /i/<slug>, which loads
+  // the published event from the public API. Fall back to /i/<id> only for
+  // local/mock events that have no server slug.
+  const inviteHref = ev.slug ? `/i/${ev.slug}` : `/i/${ev.id}`;
 
   // Host: remove a gift from the wishlist (persist + live update).
   function deleteGift(itemId: string) {
@@ -222,6 +249,12 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
 
   return (
     <div className="min-h-screen bg-[#FFFEF7] font-dote text-black">
+      <Toast
+        show={savedBanner}
+        onClose={() => setSavedBanner(false)}
+        title="Changes saved"
+        message="Your event has been updated."
+      />
       {/* ============================ HERO ============================ */}
       <section className="relative h-[560px] w-full overflow-hidden">
         <div className="absolute inset-0" style={{ background: occ.cover }} />
@@ -446,14 +479,24 @@ function ContributeModal({
   recipient: string;
   onClose: () => void;
 }) {
+  // Physical gifts can be bought (reserved) outright or contributed toward.
+  const canBuy = item.type === "physical";
+  const [mode, setMode] = useState<"contribute" | "buy">("contribute");
   const [amount, setAmount] = useState<number>(item.anyAmount ? 0 : item.amount || 0);
   const [name, setName] = useState("");
   const [done, setDone] = useState(false);
 
-  const valid = amount > 0 && name.trim().length > 0;
+  const buying = canBuy && mode === "buy";
+  const valid = buying ? name.trim().length > 0 : amount > 0 && name.trim().length > 0;
 
   function submit() {
     if (!valid) return;
+    if (buying) {
+      // Lock the item to this guest so no one else buys the same thing.
+      reserveWishlistItem(item.id, { guest_name: name.trim(), show_name: true }).catch(() => {});
+      setDone(true);
+      return;
+    }
     try {
       const all = JSON.parse(localStorage.getItem("dote.contributions") || "[]");
       all.push({
@@ -486,8 +529,29 @@ function ContributeModal({
             <span className="grid size-14 place-items-center rounded-full bg-teal/10 text-[28px]">🎁</span>
             <h3 className="font-italiana text-[24px] tracking-[-0.8px]">Thank you, {name.trim().split(" ")[0]}!</h3>
             <p className="max-w-[340px] text-[15px] leading-relaxed text-[#5c5c5c]">
-              Your &#8358;{amount.toLocaleString()} gift toward <b>{item.name}</b> is noted, and {recipient} will be so grateful.
+              {buying ? (
+                <>
+                  <b>{item.name}</b> is reserved for you — no one else can buy it, and {recipient} will be so
+                  grateful.
+                </>
+              ) : (
+                <>
+                  Your &#8358;{amount.toLocaleString()} gift toward <b>{item.name}</b> is noted, and {recipient} will
+                  be so grateful.
+                </>
+              )}
             </p>
+            {buying && item.link && (
+              <a
+                href={item.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-[48px] w-full items-center justify-center gap-2 rounded-[12px] border border-teal bg-teal/5 text-[14px] font-semibold text-teal transition hover:bg-teal/10"
+              >
+                <StoreIcon className="size-[18px]" />
+                View in store ↗
+              </a>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -521,7 +585,39 @@ function ContributeModal({
               </button>
             </div>
 
+            {/* buy vs contribute — physical gifts only */}
+            {canBuy && (
+              <div className="grid grid-cols-2 gap-1 rounded-[14px] bg-[#f0f7f9] p-1">
+                <ModeTab active={mode === "contribute"} onClick={() => setMode("contribute")}>
+                  Contribute
+                </ModeTab>
+                <ModeTab active={mode === "buy"} onClick={() => setMode("buy")}>
+                  Buy the gift
+                </ModeTab>
+              </div>
+            )}
+
+            {buying && (
+              <div className="flex flex-col gap-3 rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-4 py-4">
+                <p className="text-[14px] leading-relaxed text-[#5c5c5c]">
+                  Reserve this gift so no one else buys the same thing, then get it yourself.
+                </p>
+                {item.link && (
+                  <a
+                    href={item.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-[48px] items-center justify-center gap-2 rounded-[12px] border border-teal bg-teal/5 text-[14px] font-semibold text-teal transition hover:bg-teal/10"
+                  >
+                    <StoreIcon className="size-[18px]" />
+                    View in store ↗
+                  </a>
+                )}
+              </div>
+            )}
+
             {/* amount */}
+            {!buying && (
             <div className="flex flex-col gap-3">
               <span className="text-[13px] font-medium tracking-[-0.2px] text-[#221a10]">How much would you like to give?</span>
               <div className="flex items-center rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-4 focus-within:border-teal">
@@ -536,14 +632,25 @@ function ContributeModal({
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                {!item.anyAmount && item.amount > 0 && (
-                  <AmountChip label={`Full ₦${item.amount.toLocaleString()}`} active={amount === item.amount} onClick={() => setAmount(item.amount)} />
-                )}
-                {QUICK_AMOUNTS.map((a) => (
-                  <AmountChip key={a} label={`₦${a.toLocaleString()}`} active={amount === a} onClick={() => setAmount(a)} />
-                ))}
+                {(() => {
+                  // Show at most 4 amount chips. When the "Full" chip is shown,
+                  // leave room for it by trimming the quick amounts to 3.
+                  const showFull = !item.anyAmount && item.amount > 0;
+                  const quick = showFull ? QUICK_AMOUNTS.slice(0, 3) : QUICK_AMOUNTS;
+                  return (
+                    <>
+                      {showFull && (
+                        <AmountChip label={`Full ₦${item.amount.toLocaleString()}`} active={amount === item.amount} onClick={() => setAmount(item.amount)} />
+                      )}
+                      {quick.map((a) => (
+                        <AmountChip key={a} label={`₦${a.toLocaleString()}`} active={amount === a} onClick={() => setAmount(a)} />
+                      ))}
+                    </>
+                  );
+                })()}
               </div>
             </div>
+            )}
 
             {/* details */}
             <WishField label="Your name">
@@ -561,10 +668,12 @@ function ContributeModal({
               disabled={!valid}
               className="h-[54px] w-full rounded-[50px] text-[15px] font-medium tracking-[0.35px] text-teal-ink transition disabled:cursor-not-allowed disabled:bg-[#d0ebf1] enabled:bg-teal enabled:hover:brightness-95"
             >
-              Contribute{amount > 0 ? ` ₦${amount.toLocaleString()}` : ""}
+              {buying ? `Reserve ${item.name}` : `Contribute${amount > 0 ? ` ₦${amount.toLocaleString()}` : ""}`}
             </button>
             <p className="-mt-2 text-center text-[12px] text-[#9a9a9a]">
-              Payments aren&rsquo;t live yet. This records your pledge.
+              {buying
+                ? "This locks the gift to you so no one else buys it."
+                : "Payments aren’t live yet. This records your pledge."}
             </p>
           </>
         )}
@@ -583,6 +692,21 @@ function AmountChip({ label, active, onClick }: { label: string; active: boolean
       }`}
     >
       {label}
+    </button>
+  );
+}
+
+function ModeTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-[10px] py-2.5 text-[14px] font-medium transition ${
+        active ? "bg-white text-[#1c1611] shadow-sm" : "text-[#7a7266] hover:text-[#1c1611]"
+      }`}
+    >
+      {children}
     </button>
   );
 }
@@ -1195,8 +1319,10 @@ function WishRow({
 }) {
   const raised = item.raised ?? 0;
   const pct = item.amount > 0 ? Math.min(100, Math.round((raised / item.amount) * 100)) : 0;
-  // Guests don't see the total raised when the host hid it for this wish.
-  const showProgress = !(guest && item.hideTotal);
+  // When the host hides contribution amounts / the running total for this wish,
+  // the progress bar is hidden for everyone — host and guests — so the host can
+  // clearly see it's hidden.
+  const showProgress = !(item.hideContrib || item.hideTotal);
   return (
     <div
       role={onOpen ? "button" : undefined}
@@ -1245,7 +1371,7 @@ function WishRow({
           </div>
         </div>
 
-        {/* progress, hidden from guests when the host hid the total */}
+        {/* progress bar, hidden when the host hid contributions / the total */}
         {showProgress ? (
           <div className="flex w-full min-w-px flex-col gap-[6px] sm:flex-1">
             <div className="h-[11px] w-full rounded-[6px]" style={{ background: theme.track }}>
@@ -1284,6 +1410,15 @@ function WishRow({
 function ArrowRightIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+  );
+}
+function StoreIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+      <path d="M3 6h18" />
+      <path d="M16 10a4 4 0 0 1-8 0" />
+    </svg>
   );
 }
 /* vuesax/bulk/setting-3, exact Figma asset (14544:12523): rounded square body

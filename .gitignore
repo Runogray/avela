@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# KyivType Sans source pack (only public/fonts/KyivTypeSans-Light.otf is used)
+/kyivtype-sans-serif-font.zip
+/kyivtype-sans-serif-font/

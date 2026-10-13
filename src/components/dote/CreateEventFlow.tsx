@@ -7,6 +7,7 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { DoteLogo } from "./Logo";
 import { BackArrow } from "./BackArrow";
+import { Toast } from "./Toast";
 import { createEventFromFlow, getHostEvent, hostEventToFlow, updateEventFromFlow } from "@/lib/host-events";
 import { getSession } from "@/lib/auth";
 import { isNetworkError } from "@/lib/api";
@@ -82,6 +83,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
 
   const [step, setStep] = useState<Step>("details");
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   // When editing, wait for the stored event to hydrate the fields before paint.
   const [hydrated, setHydrated] = useState(!editId);
 
@@ -144,6 +146,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
         const f = hostEventToFlow(await getHostEvent(editId));
         setOccasion(f.occasion);
         setTitle(f.title);
+        setCategory(f.category ?? "");
         setLocation(f.venue);
         setDress(f.dress);
         setTime(f.time);
@@ -184,6 +187,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
     if (idx < STEPS.length - 1) setStep(STEPS[idx + 1]);
   }
   function finish() {
+    setSaveError(false);
     setLoading(true);
     (async () => {
       // Durable cover (first photo) + item images as data URLs (object URLs
@@ -224,7 +228,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
         if (!isNetworkError(err)) {
           // A real server error (validation/auth). Surface it and stop.
           setLoading(false);
-          alert("Couldn’t save your event. Please check the details and try again.");
+          setSaveError(true);
           return;
         }
         // offline → fall back to the local mock store so the flow still works
@@ -267,6 +271,13 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
 
   return (
     <div className="min-h-screen font-dote" style={{ background: SCREEN_BG }}>
+      <Toast
+        show={saveError}
+        onClose={() => setSaveError(false)}
+        tone="error"
+        title={editMode ? "Couldn’t save your changes" : "Couldn’t create your event"}
+        message="Something went wrong. Please check the details and try again."
+      />
       {/* ============================= MOBILE ============================= */}
       <div className="mx-auto flex min-h-screen w-full max-w-[402px] flex-col px-6 lg:hidden">
         <ProgressBar step={idx + 1} pct={pct} className="pt-[52px]" />
@@ -492,11 +503,7 @@ function DetailsStep({
 
       <div className="mt-6 flex flex-col gap-5">
         <Field label="Title">
-          <TextInput
-            value={v.title}
-            onChange={set.setTitle}
-            placeholder="e.g #tee&tar2026"
-          />
+          <TitleInput value={v.title} onChange={set.setTitle} />
         </Field>
 
         <Field label={CATEGORY_LABEL[occasion] ?? "Category"}>
@@ -623,6 +630,26 @@ function TextInput({
       placeholder={placeholder}
       className="h-[64px] w-full rounded-[16px] border border-[#e8f1f3] bg-white px-4 font-dote-input text-[16px] text-[#1a1a1a] outline-none transition placeholder:text-[#cccccc] focus:border-teal"
     />
+  );
+}
+
+/** Event title input with a fixed, non-editable "#" so every title is a
+ * hashtag. The stored value is "#" + what the host types (empty when blank). */
+function TitleInput({ value, onChange }: { value: string; onChange: (s: string) => void }) {
+  const rest = value.replace(/^#+/, "");
+  return (
+    <div className="flex h-[64px] w-full items-center rounded-[16px] border border-[#e8f1f3] bg-white px-4 transition focus-within:border-teal">
+      <span className="font-dote-input text-[16px] text-[#1a1a1a]">#</span>
+      <input
+        value={rest}
+        onChange={(e) => {
+          const r = e.target.value.replace(/^#+/, "");
+          onChange(r ? `#${r}` : "");
+        }}
+        placeholder="tee&tar2026"
+        className="ml-0.5 h-full w-full bg-transparent font-dote-input text-[16px] text-[#1a1a1a] outline-none placeholder:text-[#cccccc]"
+      />
+    </div>
   );
 }
 
@@ -1307,8 +1334,8 @@ function AddWishlistSheet({
   const [link, setLink] = useState(editing?.link ?? "");
   const [anyAmount, setAnyAmount] = useState(editing?.anyAmount ?? false);
   const [amount, setAmount] = useState(editing?.amount ?? 1000000);
-  const [hideContrib, setHideContrib] = useState(editing?.hideContrib ?? true);
-  const [hideTotal, setHideTotal] = useState(editing?.hideTotal ?? true);
+  const [hideContrib, setHideContrib] = useState(editing?.hideContrib ?? false);
+  const [hideTotal, setHideTotal] = useState(editing?.hideTotal ?? false);
   const imgRef = useRef<HTMLInputElement | null>(null);
 
   // Validate the optional store link. null ⇒ the text isn't a real URL.
@@ -1749,7 +1776,7 @@ function DesktopDetails({
       <DesktopHeading title="Event Details" sub="Provide the essential details about your event." />
       <div className="grid grid-cols-2 gap-x-7 gap-y-5">
         <Field label="Title">
-          <TextInput value={v.title} onChange={set.setTitle} placeholder="e.g #tee&tar2026" />
+          <TitleInput value={v.title} onChange={set.setTitle} />
         </Field>
         <Field label={CATEGORY_LABEL[occasion] ?? "Category"}>
           <SelectInput

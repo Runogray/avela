@@ -64,12 +64,12 @@
 }
 
 /* KyivType Sans Light, the hero event-title face (Dmytro Rastvortsev, free,
-   NoDerivatives: self-host the official file as-is, don't subset/convert).
-   Drop the file at /public/fonts/KyivTypeSans-Light.woff2 and it activates
-   automatically; until then the --font-kyiv stack falls back to Inter Tight. */
+   NoDerivatives: the official .otf is self-hosted as-is, not subset/converted).
+   File lives at /public/fonts/KyivTypeSans-Light.otf; the --font-kyiv stack
+   falls back to Inter Tight if it ever fails to load. */
 @font-face {
   font-family: "KyivType Sans";
-  src: url("/fonts/KyivTypeSans-Light.woff2") format("woff2");
+  src: url("/fonts/KyivTypeSans-Light.otf") format("opentype");
   font-weight: 300;
   font-style: normal;
   font-display: swap;
