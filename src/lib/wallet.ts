@@ -64,6 +64,10 @@ export function setWithdrawalPin(pin: string) {
     body: { pin },
   });
 }
+/** The saved payout account (also where guests transfer cash gifts), or null. */
+export function getBankAccount() {
+  return apiFetch<BankAccount | null>("/wallet/bank-account/");
+}
 export function saveBankAccount(body: BankAccount) {
   return apiFetch<BankAccount>("/wallet/bank-account/", { method: "PUT", body });
 }

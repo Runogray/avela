@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BackArrow } from "./BackArrow";
 import { TransactionStatus } from "./TransactionStatus";
 import { recordWalletTx } from "@/lib/walletTx";
-import { getWallet, saveBankAccount, setWithdrawalPin, verifyNin, withdraw as withdrawApi } from "@/lib/wallet";
+import { getBankAccount, getWallet, saveBankAccount, setWithdrawalPin, verifyNin, withdraw as withdrawApi } from "@/lib/wallet";
 import { apiErrorMessage } from "@/lib/api";
 
 // Small mock helpers so the status screen shows plausible values.
@@ -28,19 +28,51 @@ const txRef = () => `TXN-${Math.floor(1000 + Math.random() * 9000)}-${Math.rando
  *   4. Confirm PIN            14552:16601
  * ------------------------------------------------------------------ */
 
-const BANKS = ["GTBank", "Access Bank", "Zenith Bank", "UBA", "First Bank", "Kuda", "Opay"];
+const BANKS = [
+  "Access Bank",
+  "Ecobank",
+  "Fidelity Bank",
+  "First Bank",
+  "FCMB",
+  "GTBank",
+  "Keystone Bank",
+  "Kuda",
+  "Moniepoint",
+  "Opay",
+  "PalmPay",
+  "Polaris Bank",
+  "Providus Bank",
+  "Stanbic IBTC",
+  "Sterling Bank",
+  "UBA",
+  "Union Bank",
+  "Wema Bank",
+  "Zenith Bank",
+];
+
+/** Only follow same-site paths from ?next= (never another origin). */
+function safeNext(next: string | null): string {
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/wallet";
+}
 type Step = "bvn" | "bank" | "createPin" | "confirmPin" | "amount" | "authPin" | "done";
 
 export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
   const router = useRouter();
   const modal = !!onClose;
   const close = onClose ?? (() => router.push("/wallet"));
-  const [step, setStep] = useState<Step>("bvn");
+  // ?setup=bank&next=/events/<id>: hosts adding the account guests transfer
+  // cash gifts into. Opens straight on Bank Details (no BVN) and returns.
+  const params = useSearchParams();
+  const setupNext = !modal && params.get("setup") === "bank" ? safeNext(params.get("next")) : null;
+  const [step, setStep] = useState<Step>(setupNext ? "bank" : "bvn");
 
   const [bvn, setBvn] = useState("");
   const [bank, setBank] = useState("GTBank");
   const [bankOpen, setBankOpen] = useState(false);
   const [account, setAccount] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [bankErr, setBankErr] = useState("");
+  const [savingBank, setSavingBank] = useState(false);
   const [pin, setPin] = useState("");
   const [confirm, setConfirm] = useState("");
   const [pinErr, setPinErr] = useState(false);
@@ -53,9 +85,35 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
     getWallet()
       .then((w) => setAvail(w.available_kobo / 100))
       .catch(() => setAvail(0));
+    // Pre-fill a saved account so hosts can review or change it.
+    getBankAccount()
+      .then((b) => {
+        if (!b) return;
+        if (BANKS.includes(b.bank_name)) setBank(b.bank_name);
+        setAccount(b.account_number);
+        setAccountName(b.account_name);
+      })
+      .catch(() => {});
   }, []);
 
-  const resolved = account.length >= 10 ? "Lesley Ugochukwu" : null;
+  // No account-name lookup service yet, so the host types the name as it
+  // appears on the account (guests see it when sending cash gifts).
+  const bankReady = account.length === 10 && accountName.trim().length >= 3;
+
+  async function saveBank() {
+    if (!bankReady || savingBank) return;
+    setSavingBank(true);
+    setBankErr("");
+    try {
+      await saveBankAccount({ bank_name: bank, account_number: account, account_name: accountName.trim() });
+      if (setupNext) router.push(setupNext);
+      else setStep("createPin");
+    } catch (err) {
+      setBankErr(apiErrorMessage(err, "We couldn’t save your bank details. Please try again."));
+    } finally {
+      setSavingBank(false);
+    }
+  }
 
   // Create PIN complete → go confirm.
   useEffect(() => {
@@ -159,8 +217,13 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
   /* ---------------------------- BANK ----------------------------- */
   if (step === "bank") {
     return (
-      <FormShell modal={modal} onBack={() => setStep("bvn")}>
+      <FormShell modal={modal} onBack={() => (setupNext ? router.push(setupNext) : setStep("bvn"))}>
         <h1 className="font-dote text-[28px] font-medium tracking-[-0.4px] text-[#1c1611]">Bank Details</h1>
+        {setupNext && (
+          <p className="mt-2 text-[14px] leading-relaxed text-[#5c5c5c]">
+            Guests send cash gifts straight to this account by bank transfer.
+          </p>
+        )}
 
         <div className="mt-[18px] flex flex-col gap-[14px]">
           <label className="text-[14px] font-medium tracking-[-0.66px] text-[#221a10]">Select Bank</label>
@@ -214,26 +277,21 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
               className="h-[64px] w-full rounded-[16px] border border-[#edeceb] bg-[#fafafa] px-4 text-[16px] font-medium text-[#1a1a1a] outline-none transition placeholder:text-[#b9b9b9] focus:border-teal"
             />
           </div>
-          {resolved && (
-            <div className="flex items-center gap-[12px]">
-              <TickCircle className="size-5 text-teal" />
-              <span className="text-[14px] font-medium tracking-[0.2px] text-[#0e0e0e]">{resolved}</span>
-            </div>
-          )}
         </div>
 
-        <Cta
-          label="Save"
-          disabled={!resolved}
-          onClick={() => {
-            saveBankAccount({
-              bank_name: bank,
-              account_number: account,
-              account_name: resolved ?? "",
-            }).catch(() => {});
-            setStep("createPin");
-          }}
-        />
+        <div className="mt-[18px] flex flex-col gap-[14px]">
+          <label className="text-[14px] font-medium tracking-[-0.66px] text-[#221a10]">Account Name</label>
+          <input
+            value={accountName}
+            onChange={(e) => setAccountName(e.target.value.slice(0, 140))}
+            placeholder="Name on the account"
+            autoComplete="name"
+            className="h-[64px] w-full rounded-[16px] border border-[#edeceb] bg-[#fafafa] px-4 text-[16px] font-medium text-[#1a1a1a] outline-none transition placeholder:text-[#b9b9b9] focus:border-teal"
+          />
+          {bankErr && <p role="alert" className="text-[13px] text-[#c0392b]">{bankErr}</p>}
+        </div>
+
+        <Cta label={savingBank ? "Saving…" : "Save"} disabled={!bankReady || savingBank} onClick={saveBank} />
       </FormShell>
     );
   }
@@ -314,7 +372,7 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
         subtitle={
           <>
             {`₦${amount.toLocaleString()} on its way to `}
-            <span className="font-bold">{resolved ?? bank}</span>
+            <span className="font-bold">{accountName.trim() || bank}</span>
           </>
         }
         rows={[
@@ -552,13 +610,6 @@ function ChevronDown({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
-function TickCircle({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.7 7.7-5.4 5.4a1 1 0 0 1-1.4 0l-2.6-2.6a1 1 0 1 1 1.4-1.4l1.9 1.9 4.7-4.7a1 1 0 0 1 1.4 1.4Z" />
     </svg>
   );
 }

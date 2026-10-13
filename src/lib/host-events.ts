@@ -235,6 +235,8 @@ export interface PublicApiEvent {
   wishlist_items: ApiWishlistItem[];
   goals: ApiGoal[];
   gallery: string[];
+  /** The host has a bank account, so cash gifts can be paid by transfer. */
+  accepts_transfers: boolean;
 }
 
 /** Public read of a published event by slug (guest invite page). */
@@ -248,6 +250,65 @@ export function reserveWishlistItem(
   body: { guest_name: string; show_name: boolean },
 ) {
   return apiFetch(`/wishlist-items/${itemId}/reserve/`, { method: "POST", body, auth: false });
+}
+
+/* ------------------------- cash gifts by bank transfer ------------------------- */
+/** What a guest sees after choosing an amount: the host's account + a reference. */
+export interface TransferDetails {
+  gift_id: string;
+  reference: string;
+  amount_kobo: number;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+}
+
+/** Guest starts a cash gift: records it as pending and returns where to pay. */
+export function startTransferGift(
+  slug: string,
+  body: {
+    amount_kobo: number;
+    giver_name: string;
+    goal_id?: string | null;
+    wishlist_item_id?: string | null;
+    show_name?: boolean;
+    show_amount?: boolean;
+  },
+) {
+  return apiFetch<TransferDetails>(`/events/${slug}/transfers/`, { method: "POST", body, auth: false });
+}
+
+/** Guest tapped "I've sent it" — nudges the host to confirm. */
+export function markTransferSent(slug: string, giftId: string) {
+  return apiFetch(`/events/${slug}/transfers/${giftId}/sent/`, { method: "POST", auth: false });
+}
+
+/** A transfer gift as the host sees it on Manage. */
+export interface HostTransfer {
+  id: string;
+  giver_name: string;
+  amount_kobo: number;
+  reference: string;
+  status: "initiated" | "paid" | "failed" | "reversed";
+  goal_id: string | null;
+  wishlist_item_id: string | null;
+  for_name: string;
+  message: string;
+  marked_sent_at: string | null;
+  created_at: string;
+  paid_at: string | null;
+}
+
+export function listTransfers(eventId: string) {
+  return apiFetch<HostTransfer[]>(`/host/events/${eventId}/transfers/`);
+}
+
+export function confirmTransfer(eventId: string, giftId: string) {
+  return apiFetch<HostTransfer>(`/host/events/${eventId}/transfers/${giftId}/confirm/`, { method: "POST" });
+}
+
+export function declineTransfer(eventId: string, giftId: string) {
+  return apiFetch<HostTransfer>(`/host/events/${eventId}/transfers/${giftId}/decline/`, { method: "POST" });
 }
 
 /** Map a public event into the overview's display shape (mirrors
@@ -290,6 +351,7 @@ export function publicEventToFlow(e: PublicApiEvent) {
     cover: e.cover_image || null,
     gallery: (e.gallery || []).filter(Boolean),
     items,
+    acceptsTransfers: !!e.accepts_transfers,
   };
 }
 

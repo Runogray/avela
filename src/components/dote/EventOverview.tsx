@@ -5,7 +5,21 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DoteLogo } from "./Logo";
 import { BackArrow } from "./BackArrow";
 import { Toast } from "./Toast";
-import { getHostEvent, hostEventToFlow, getPublicEvent, publicEventToFlow, reserveWishlistItem } from "@/lib/host-events";
+import {
+  getHostEvent,
+  hostEventToFlow,
+  getPublicEvent,
+  publicEventToFlow,
+  reserveWishlistItem,
+  startTransferGift,
+  markTransferSent,
+  listTransfers,
+  confirmTransfer,
+  declineTransfer,
+  type TransferDetails,
+} from "@/lib/host-events";
+import { apiErrorMessage } from "@/lib/api";
+import { getBankAccount, type BankAccount } from "@/lib/wallet";
 
 /* ------------------------------------------------------------------ *
  * Dote, Event Overview (the published celebration page; host reaches
@@ -48,6 +62,7 @@ type StoredEvent = {
   cover?: string | null;
   gallery?: string[];
   items?: StoredItem[];
+  acceptsTransfers?: boolean; // host added a bank account (guest view)
 };
 
 const OCC: Record<string, { label: string; cover: string }> = {
@@ -115,6 +130,14 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
   const [copied, setCopied] = useState(false);
   const [contribute, setContribute] = useState<StoredItem | null>(null);
   const [viewGift, setViewGift] = useState<StoredItem | null>(null);
+  // Host view: the account guests transfer cash gifts into (undefined = loading).
+  const [bankAcct, setBankAcct] = useState<BankAccount | null | undefined>(undefined);
+  useEffect(() => {
+    if (guest) return;
+    getBankAccount()
+      .then((b) => setBankAcct(b))
+      .catch(() => setBankAcct(undefined));
+  }, [guest]);
   // Sum of contributions per gift (dote.contributions is kept separately
   // from the event's items, so progress is derived here).
   const [contribTotals, setContribTotals] = useState<Record<string, number>>({});
@@ -411,11 +434,17 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
       {items.length > 0 && (
         <section className="flex flex-col items-center gap-[26px] px-6 py-16">
           <h2 className="font-italiana text-[28px] tracking-[-0.8px] sm:text-[32px]">A List of Little Wishes</h2>
+          {!guest && ev.slug && bankAcct !== undefined && (
+            <CashGiftAccount
+              account={bankAcct}
+              href={`/wallet/withdraw?setup=bank&next=${encodeURIComponent(`/events/${ev.id}`)}`}
+            />
+          )}
           <div className="flex w-full max-w-[756px] flex-col gap-4">
             {items.map((it, i) => (
               <WishRow
                 key={it.id}
-                item={{ ...it, raised: (it.raised ?? 0) + (contribTotals[it.id] ?? 0) }}
+                item={{ ...it, raised: (it.raised ?? 0) + (ev.slug ? 0 : contribTotals[it.id] ?? 0) }}
                 theme={THEMES[i % THEMES.length]}
                 guest={guest}
                 onOpen={guest ? () => setContribute(it) : () => setViewGift(it)}
@@ -445,7 +474,8 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
       {/* ===================== CONTRIBUTE MODAL ====================== */}
       {contribute && (
         <ContributeModal
-          eventId={ev.id}
+          slug={ev.slug}
+          acceptsTransfers={!!ev.acceptsTransfers}
           item={contribute}
           recipient={RECIPIENT[ev.occasion] ?? "the celebrant"}
           onClose={() => setContribute(null)}
@@ -456,8 +486,18 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
       {viewGift && (
         <GiftContributionsModal
           eventId={ev.id}
+          live={!!ev.slug}
           item={viewGift}
           eventTitle={ev.title}
+          onConfirmed={(naira) =>
+            // A confirmed transfer moves this gift's progress bar right away.
+            setEv((cur) =>
+              cur && {
+                ...cur,
+                items: cur.items?.map((x) => (x.id === viewGift.id ? { ...x, raised: (x.raised ?? 0) + naira } : x)),
+              },
+            )
+          }
           onClose={() => setViewGift(null)}
           onDelete={() => deleteGift(viewGift.id)}
         />
@@ -469,12 +509,14 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
 const QUICK_AMOUNTS = [5000, 10000, 25000, 50000];
 
 function ContributeModal({
-  eventId,
+  slug,
+  acceptsTransfers,
   item,
   recipient,
   onClose,
 }: {
-  eventId: string;
+  slug?: string;
+  acceptsTransfers: boolean;
   item: StoredItem;
   recipient: string;
   onClose: () => void;
@@ -485,33 +527,46 @@ function ContributeModal({
   const [amount, setAmount] = useState<number>(item.anyAmount ? 0 : item.amount || 0);
   const [name, setName] = useState("");
   const [done, setDone] = useState(false);
+  // Cash gifts: after Submit the guest sees the host's account to transfer into.
+  const [transfer, setTransfer] = useState<TransferDetails | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   const buying = canBuy && mode === "buy";
-  const valid = buying ? name.trim().length > 0 : amount > 0 && name.trim().length > 0;
+  const cashUnavailable = !buying && (!acceptsTransfers || !slug);
+  const valid = buying ? name.trim().length > 0 : amount > 0 && name.trim().length > 0 && !cashUnavailable;
 
-  function submit() {
-    if (!valid) return;
+  async function submit() {
+    if (!valid || busy) return;
     if (buying) {
       // Lock the item to this guest so no one else buys the same thing.
       reserveWishlistItem(item.id, { guest_name: name.trim(), show_name: true }).catch(() => {});
       setDone(true);
       return;
     }
+    setBusy(true);
+    setError("");
     try {
-      const all = JSON.parse(localStorage.getItem("dote.contributions") || "[]");
-      all.push({
-        id: Math.random().toString(36).slice(2),
-        eventId,
-        itemId: item.id,
-        itemName: item.name,
-        amount,
-        name: name.trim(),
-        createdAt: Date.now(),
+      const t = await startTransferGift(slug!, {
+        amount_kobo: amount * 100,
+        giver_name: name.trim(),
+        goal_id: item.type === "monetary" ? item.id : null,
+        wishlist_item_id: item.type === "physical" ? item.id : null,
       });
-      localStorage.setItem("dote.contributions", JSON.stringify(all));
-    } catch {
-      /* storage unavailable, still confirm */
+      setTransfer(t);
+    } catch (err) {
+      setError(apiErrorMessage(err, "We couldn’t start your gift. Please try again."));
+    } finally {
+      setBusy(false);
     }
+  }
+
+  async function sent() {
+    if (!transfer || busy) return;
+    setBusy(true);
+    // Best effort: the gift is already recorded; this just nudges the host.
+    await markTransferSent(slug!, transfer.gift_id).catch(() => {});
+    setBusy(false);
     setDone(true);
   }
 
@@ -536,8 +591,8 @@ function ContributeModal({
                 </>
               ) : (
                 <>
-                  Your &#8358;{amount.toLocaleString()} gift toward <b>{item.name}</b> is noted, and {recipient} will
-                  be so grateful.
+                  Your &#8358;{amount.toLocaleString()} gift toward <b>{item.name}</b> is on its way.
+                  {` ${recipient[0].toUpperCase() + recipient.slice(1)} will confirm it once it lands, and they’ll be so grateful.`}
                 </>
               )}
             </p>
@@ -560,6 +615,16 @@ function ContributeModal({
               Done
             </button>
           </div>
+        ) : transfer ? (
+          <TransferStep
+            details={transfer}
+            itemName={item.name}
+            recipient={recipient}
+            busy={busy}
+            onSent={sent}
+            onBack={() => setTransfer(null)}
+            onClose={onClose}
+          />
         ) : (
           <>
             {/* header */}
@@ -662,22 +727,181 @@ function ContributeModal({
               />
             </WishField>
 
+            {cashUnavailable && (
+              <p className="rounded-[14px] border border-[#f3e3c3] bg-[#fffaf0] px-4 py-3 text-[13px] leading-relaxed text-[#7a5a1e]">
+                Cash gifts aren&rsquo;t open yet. The host still needs to add the bank account to send them to. Please
+                check back soon.
+              </p>
+            )}
+            {error && (
+              <p role="alert" className="rounded-[14px] border border-[#f5d0c9] bg-[#fff5f3] px-4 py-3 text-[13px] leading-relaxed text-[#a3321f]">
+                {error}
+              </p>
+            )}
+
             <button
               type="button"
               onClick={submit}
-              disabled={!valid}
+              disabled={!valid || busy}
               className="h-[54px] w-full rounded-[50px] text-[15px] font-medium tracking-[0.35px] text-teal-ink transition disabled:cursor-not-allowed disabled:bg-[#d0ebf1] enabled:bg-teal enabled:hover:brightness-95"
             >
-              {buying ? `Reserve ${item.name}` : `Contribute${amount > 0 ? ` ₦${amount.toLocaleString()}` : ""}`}
-            </button>
-            <p className="-mt-2 text-center text-[12px] text-[#9a9a9a]">
               {buying
-                ? "This locks the gift to you so no one else buys it."
-                : "Payments aren’t live yet. This records your pledge."}
-            </p>
+                ? `Reserve ${item.name}`
+                : busy
+                  ? "Just a moment…"
+                  : `Contribute${amount > 0 ? ` ₦${amount.toLocaleString()}` : ""}`}
+            </button>
+            {!cashUnavailable && (
+              <p className="-mt-2 text-center text-[12px] text-[#9a9a9a]">
+                {buying
+                  ? "This locks the gift to you so no one else buys it."
+                  : "Next, you’ll see the account to send your gift to."}
+              </p>
+            )}
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/* Host view: where guests' cash gifts go, or a prompt to add the account. */
+function CashGiftAccount({ account, href }: { account: BankAccount | null; href: string }) {
+  if (!account) {
+    return (
+      <div className="flex w-full max-w-[756px] flex-col gap-3 rounded-[18px] border border-[#f3e3c3] bg-[#fffaf0] p-[18px] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <p className="font-dote text-[16px] font-medium tracking-[-0.4px] text-[#1c1611]">Add where cash gifts should go</p>
+          <p className="font-dote text-[14px] leading-relaxed text-[#7a5a1e]">
+            Guests can&rsquo;t send cash gifts until you add the bank account they&rsquo;ll transfer to.
+          </p>
+        </div>
+        <a
+          href={href}
+          className="flex h-[44px] shrink-0 items-center justify-center rounded-[50px] bg-teal px-5 font-dote text-[14px] font-medium text-teal-ink transition hover:brightness-95"
+        >
+          Add bank account
+        </a>
+      </div>
+    );
+  }
+  return (
+    <p className="font-dote text-[14px] text-[#5c5c5c]">
+      Cash gifts go to {account.bank_name} ••{account.account_number.slice(-4)}
+      {account.account_name ? ` · ${account.account_name}` : ""} ·{" "}
+      <a href={href} className="font-medium text-teal underline-offset-2 hover:underline">
+        Change
+      </a>
+    </p>
+  );
+}
+
+/* Guest pays the host's own account: show where to send it + a reference. */
+function TransferStep({
+  details,
+  itemName,
+  recipient,
+  busy,
+  onSent,
+  onBack,
+  onClose,
+}: {
+  details: TransferDetails;
+  itemName: string;
+  recipient: string;
+  busy: boolean;
+  onSent: () => void;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  const naira = Math.round(details.amount_kobo / 100);
+  return (
+    <>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[17px] font-medium tracking-[-0.3px] text-black">Send &#8358;{naira.toLocaleString()} by transfer</p>
+          <p className="text-[13px] text-[#7a7266]">Your gift toward {itemName}</p>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 shrink-0 place-items-center rounded-full text-[#9a9a9a] transition hover:bg-black/5">
+          <CloseIcon className="size-5" />
+        </button>
+      </div>
+
+      <div className="flex flex-col divide-y divide-[#eef3f4] rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-4">
+        <TransferRow label="Bank" value={details.bank_name} />
+        <TransferRow label="Account number" value={details.account_number} copy mono />
+        <TransferRow label="Account name" value={details.account_name || "—"} />
+        <TransferRow label="Amount" value={`₦${naira.toLocaleString()}`} copy={String(naira)} />
+        <TransferRow label="Reference" value={details.reference} copy mono highlight />
+      </div>
+
+      <p className="-mt-2 text-[13px] leading-relaxed text-[#5c5c5c]">
+        Add the <b className="font-semibold text-[#1c1611]">reference</b> to your transfer narration
+        {` so ${recipient} knows it’s from you. They’ll confirm your gift once it lands.`}
+      </p>
+
+      <button
+        type="button"
+        onClick={onSent}
+        disabled={busy}
+        className="h-[54px] w-full rounded-[50px] bg-teal text-[15px] font-medium tracking-[0.35px] text-teal-ink transition hover:brightness-95 disabled:opacity-70"
+      >
+        {busy ? "Just a moment…" : "I’ve sent it"}
+      </button>
+      <button type="button" onClick={onBack} className="-mt-3 text-center text-[13px] font-medium text-[#7a7266] transition hover:text-[#1c1611]">
+        Change amount
+      </button>
+    </>
+  );
+}
+
+function TransferRow({
+  label,
+  value,
+  copy,
+  mono,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  copy?: boolean | string; // true = copy `value`; a string = copy that instead
+  mono?: boolean;
+  highlight?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function doCopy() {
+    try {
+      await navigator.clipboard.writeText(typeof copy === "string" ? copy : value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard blocked; the value is still visible to copy by hand */
+    }
+  }
+  return (
+    <div className="flex items-center justify-between gap-3 py-3">
+      <div className="min-w-0">
+        <p className="text-[12px] text-[#7a7266]">{label}</p>
+        <p
+          className={`truncate text-[16px] font-semibold ${highlight ? "text-teal" : "text-[#1c1611]"} ${
+            mono ? "tracking-[1px] tabular-nums" : "tracking-[-0.2px]"
+          }`}
+        >
+          {value}
+        </p>
+      </div>
+      {copy && (
+        <button
+          type="button"
+          onClick={doCopy}
+          aria-label={`Copy ${label.toLowerCase()}`}
+          className={`h-[32px] shrink-0 rounded-[50px] border px-3 text-[12px] font-medium transition ${
+            copied ? "border-teal bg-teal text-teal-ink" : "border-teal/40 bg-white text-teal hover:bg-teal/5"
+          }`}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      )}
     </div>
   );
 }
@@ -736,6 +960,8 @@ type Contribution = {
   name: string;
   email?: string;
   status?: string;
+  reference?: string;
+  markedSent?: boolean; // guest tapped "I've sent it"
   createdAt: number;
 };
 
@@ -764,38 +990,89 @@ function fmtContribTime(ts: number): string {
  * old table modal. Opened when the host taps a wishlist gift. */
 function GiftContributionsModal({
   eventId,
+  live,
   item,
   eventTitle,
+  onConfirmed,
   onClose,
   onDelete,
 }: {
   eventId: string;
+  live: boolean; // server-backed event (bank-transfer gifts come from the API)
   item: StoredItem;
   eventTitle: string;
+  onConfirmed: (naira: number) => void;
   onClose: () => void;
   onDelete: () => void;
 }) {
-  const [rows, setRows] = useState<Contribution[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  // Local/mock events keep pledges in localStorage; live events load the
+  // bank-transfer gifts from the API below.
+  const [rows, setRows] = useState<Contribution[]>(() => (live ? [] : localContributions(eventId, item.id)));
+  const [loaded, setLoaded] = useState(!live);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [acting, setActing] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const all: Contribution[] = JSON.parse(localStorage.getItem("dote.contributions") || "[]");
-      setRows(
-        all
-          .filter((c) => c.eventId === eventId && c.itemId === item.id)
-          .sort((a, b) => b.createdAt - a.createdAt)
-      );
-    } catch {
-      setRows([]);
-    }
-    setLoaded(true);
-  }, [eventId, item.id]);
+    if (!live) return;
+    let cancelled = false;
+    listTransfers(eventId)
+      .then((list) => {
+        if (cancelled) return;
+        const mine = list.filter((t) =>
+          item.type === "monetary" ? t.goal_id === item.id : t.wishlist_item_id === item.id,
+        );
+        setRows(
+          mine.map((t) => ({
+            id: t.id,
+            eventId,
+            itemId: item.id,
+            itemName: item.name,
+            amount: Math.round(t.amount_kobo / 100),
+            name: t.giver_name || "Guest",
+            status: t.status,
+            reference: t.reference,
+            markedSent: !!t.marked_sent_at,
+            createdAt: new Date(t.created_at).getTime(),
+          })),
+        );
+      })
+      .catch(() => !cancelled && setRows([]))
+      .finally(() => !cancelled && setLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId, item.id, item.name, item.type, live]);
 
-  const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
+  async function confirm(r: Contribution) {
+    setActing(r.id);
+    try {
+      await confirmTransfer(eventId, r.id);
+      setRows((cur) => cur.map((x) => (x.id === r.id ? { ...x, status: "paid" } : x)));
+      onConfirmed(r.amount);
+    } catch {
+      /* leave it pending; the host can retry */
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function decline(r: Contribution) {
+    setActing(r.id);
+    try {
+      await declineTransfer(eventId, r.id);
+      setRows((cur) => cur.filter((x) => x.id !== r.id));
+    } catch {
+      /* leave it; the host can retry */
+    } finally {
+      setActing(null);
+    }
+  }
+
+  // Only confirmed money counts; pending transfers are listed for the host to check.
+  const received = rows.filter((r) => r.status === "paid");
+  const total = received.reduce((s, r) => s + (r.amount || 0), 0);
   const subtitle = item.anyAmount ? "Any amount" : `₦${item.amount.toLocaleString()}`;
-  const count = rows.length;
+  const count = received.length;
 
   const Thumb = ({ size, radius }: { size: number; radius: number }) =>
     item.image ? (
@@ -858,29 +1135,31 @@ function GiftContributionsModal({
           {/* contributors */}
           <div className="flex w-full flex-col gap-3">
             <p className="text-[18px] tracking-[-0.8px] text-black">Contributors</p>
-            {loaded && count === 0 ? (
+            {loaded && rows.length === 0 ? (
               <EmptyContrib />
             ) : (
               <div className="flex flex-col gap-[14px]">
                 {rows.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between rounded-[20px] border border-[#f0f0f0] bg-white/60 p-[14px]"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Avatar name={r.name} />
-                      <div className="flex flex-col gap-0.5">
-                        <p className="text-[16px] font-medium leading-[1.4] tracking-[-1px] text-black">{r.name}</p>
-                        <div className="flex gap-[3px] text-[12px] leading-[1.4] tracking-[-1px] text-[#636363]">
-                          <span>{fmtContribDate(r.createdAt)}</span>
-                          <span>{fmtContribTime(r.createdAt)}</span>
+                  <div key={r.id} className="flex flex-col gap-3 rounded-[20px] border border-[#f0f0f0] bg-white/60 p-[14px]">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Avatar name={r.name} />
+                        <div className="flex flex-col gap-0.5">
+                          <p className="text-[16px] font-medium leading-[1.4] tracking-[-1px] text-black">{r.name}</p>
+                          <div className="flex gap-[3px] text-[12px] leading-[1.4] tracking-[-1px] text-[#636363]">
+                            <span>{fmtContribDate(r.createdAt)}</span>
+                            <span>{fmtContribTime(r.createdAt)}</span>
+                          </div>
                         </div>
                       </div>
+                      <div className="flex flex-col items-end gap-0.5 tracking-[-1px]">
+                        <p className="text-[16px] font-medium text-black">₦{r.amount.toLocaleString()}</p>
+                        <ContribStatus status={r.status} />
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-0.5 tracking-[-1px]">
-                      <p className="text-[16px] font-medium text-black">₦{r.amount.toLocaleString()}</p>
-                      <p className="text-[16px] font-medium text-[#079e07]">Received</p>
-                    </div>
+                    {r.status !== "paid" && (
+                      <PendingTransfer r={r} busy={acting === r.id} onConfirm={() => confirm(r)} onDecline={() => decline(r)} />
+                    )}
                   </div>
                 ))}
               </div>
@@ -939,15 +1218,13 @@ function GiftContributionsModal({
             {/* contributors */}
             <div className="flex flex-col gap-3">
               <p className="text-[20px] tracking-[-0.8px] text-black">Contributors</p>
-              {loaded && count === 0 ? (
+              {loaded && rows.length === 0 ? (
                 <EmptyContrib />
               ) : (
                 <div className="flex flex-col gap-[14px]">
                   {rows.map((r) => (
-                    <div
-                      key={r.id}
-                      className="flex items-center justify-between rounded-[18px] border border-[#f0f0f0] bg-white p-[18px]"
-                    >
+                    <div key={r.id} className="flex flex-col gap-3 rounded-[18px] border border-[#f0f0f0] bg-white p-[18px]">
+                    <div className="flex items-center justify-between">
                       <div className="flex w-[280px] items-center gap-3">
                         <Avatar name={r.name} />
                         <div className="flex flex-col gap-0.5">
@@ -968,7 +1245,13 @@ function GiftContributionsModal({
                         <span className="text-black">{fmtContribDate(r.createdAt)}</span>
                         <span className="text-[#5e5e5e]">{fmtContribTime(r.createdAt)}</span>
                       </div>
-                      <p className="text-[16px] font-medium tracking-[-1px] text-[#079e07]">Received</p>
+                      <div className="w-[90px] text-right tracking-[-1px]">
+                        <ContribStatus status={r.status} />
+                      </div>
+                    </div>
+                    {r.status !== "paid" && (
+                      <PendingTransfer r={r} busy={acting === r.id} onConfirm={() => confirm(r)} onDecline={() => decline(r)} />
+                    )}
                     </div>
                   ))}
                 </div>
@@ -1012,6 +1295,66 @@ function GiftContributionsModal({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function localContributions(eventId: string, itemId: string): Contribution[] {
+  try {
+    const all: Contribution[] = JSON.parse(localStorage.getItem("dote.contributions") || "[]");
+    return all
+      .filter((c) => c.eventId === eventId && c.itemId === itemId)
+      .map((c) => ({ ...c, status: "paid" }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+  } catch {
+    return [];
+  }
+}
+
+function ContribStatus({ status }: { status?: string }) {
+  return status === "paid" ? (
+    <p className="text-[16px] font-medium text-[#079e07]">Received</p>
+  ) : (
+    <p className="text-[16px] font-medium text-[#c27a00]">Pending</p>
+  );
+}
+
+/* A bank transfer the host still has to check against their account. */
+function PendingTransfer({
+  r,
+  busy,
+  onConfirm,
+  onDecline,
+}: {
+  r: Contribution;
+  busy: boolean;
+  onConfirm: () => void;
+  onDecline: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-[14px] bg-[#fffaf0] px-[14px] py-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-[13px] leading-relaxed tracking-[-0.2px] text-[#7a5a1e]">
+        {r.markedSent ? "Guest says it’s sent. " : "Waiting for the transfer. "}
+        Look for ref <b className="font-semibold tracking-[0.5px] text-[#1c1611]">{r.reference}</b> in your account.
+      </p>
+      <div className="flex shrink-0 gap-2">
+        <button
+          type="button"
+          onClick={onDecline}
+          disabled={busy}
+          className="h-[36px] rounded-[50px] border border-[#e0dccf] bg-white px-4 text-[13px] font-medium text-[#5c5c5c] transition hover:bg-black/5 disabled:opacity-60"
+        >
+          Not received
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={busy}
+          className="h-[36px] rounded-[50px] bg-teal px-4 text-[13px] font-medium text-teal-ink transition hover:brightness-95 disabled:opacity-60"
+        >
+          {busy ? "Saving…" : "Confirm received"}
+        </button>
+      </div>
     </div>
   );
 }
