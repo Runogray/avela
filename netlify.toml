@@ -5,3 +5,6 @@
 [build.environment]
   NODE_VERSION = "22"
   NEXT_PUBLIC_API_URL = "https://api.avelaevent.com/api"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
