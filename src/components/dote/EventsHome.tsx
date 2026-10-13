@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { DoteLogo } from "./Logo";
+import { SidebarLogout } from "./SidebarLogout";
 import { BottomNav } from "./BottomNav";
 import { AvatarPicker } from "./AvatarPicker";
 import {
@@ -773,10 +774,7 @@ export function Sidebar({ active = "events" }: { active?: string }) {
           );
         })}
       </nav>
-      <a href="#" className="mt-[60px] flex items-center gap-3 px-[18px] py-4 text-[12px] font-medium text-[#616161]">
-        <LogoutIcon className="size-6 text-[#616161]" />
-        Logout
-      </a>
+      <SidebarLogout />
     </aside>
   );
 }
@@ -839,10 +837,5 @@ function TrashIcon({ className }: { className?: string }) {
 function GiftIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7S9 2 6.5 4.5 7 7 12 7ZM12 7s3-5 5.5-2.5S17 7 12 7Z" /></svg>
-  );
-}
-function LogoutIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></svg>
   );
 }

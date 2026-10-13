@@ -28,6 +28,19 @@ export function isNetworkError(err: unknown): boolean {
   return !(err instanceof ApiError) && err instanceof Error;
 }
 
+/** Fired on window when the local session is cleared (logout or a rejected token). */
+export const SIGNED_OUT_EVENT = "dote:signed-out";
+
+export function clearLocalSession() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem("dote.auth");
+  } catch {
+    /* storage unavailable */
+  }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
+}
+
 export function getToken(): string | null {
   try {
     return localStorage.getItem(TOKEN_KEY);
@@ -84,6 +97,11 @@ export async function apiFetch<T = unknown>(path: string, opts: Options = {}): P
     }
   }
 
-  if (!res.ok) throw new ApiError(res.status, data);
+  if (!res.ok) {
+    // A token the server no longer accepts (logged out elsewhere, revoked):
+    // drop the local session so the app stops acting signed in.
+    if (res.status === 401 && token && opts.auth !== false) clearLocalSession();
+    throw new ApiError(res.status, data);
+  }
   return data as T;
 }

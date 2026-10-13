@@ -6,7 +6,7 @@
  * auto-register, Notifications, EventOverview). Keeping both in sync means the
  * existing screens keep working while data now comes from the server.
  */
-import { apiFetch, getToken, TOKEN_KEY } from "./api";
+import { apiFetch, clearLocalSession, getToken, TOKEN_KEY } from "./api";
 
 const AUTH_KEY = "dote.auth";
 
@@ -135,12 +135,7 @@ export async function deleteAccount() {
   } catch {
     /* ignore network/401 — clear locally regardless */
   }
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(AUTH_KEY);
-  } catch {
-    /* ignore */
-  }
+  clearLocalSession();
 }
 
 export async function verifyEmail(code: string) {
@@ -183,12 +178,7 @@ export async function logout() {
   } catch {
     /* ignore network/401, clear locally regardless */
   }
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(AUTH_KEY);
-  } catch {
-    /* ignore */
-  }
+  clearLocalSession();
 }
 
 /** Fallback used when the backend is unreachable, so the mock UI still works. */

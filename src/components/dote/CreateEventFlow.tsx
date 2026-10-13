@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { DoteLogo } from "./Logo";
+import { SidebarLogout } from "./SidebarLogout";
 import { BackArrow } from "./BackArrow";
 import { Toast } from "./Toast";
 import { createEventFromFlow, getHostEvent, hostEventToFlow, updateEventFromFlow } from "@/lib/host-events";
@@ -1725,10 +1726,7 @@ function DesktopSidebar({ editMode }: { editMode?: boolean }) {
           );
         })}
       </nav>
-      <a href="#" className="mt-[60px] flex items-center gap-3 px-[18px] py-4 text-[12px] font-medium text-[#616161]">
-        <LogoutIcon className="size-6 text-[#616161]" />
-        Logout
-      </a>
+      <SidebarLogout />
     </aside>
   );
 }
@@ -2101,13 +2099,6 @@ function MaximizeIcon({ className }: { className?: string }) {
   );
 }
 
-function LogoutIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-    </svg>
-  );
-}
 
 function Chevron({ className }: { className?: string }) {
   return (
