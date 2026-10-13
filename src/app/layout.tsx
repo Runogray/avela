@@ -1,61 +1,65 @@
 import type { Metadata } from "next";
-import { Fraunces, Hanken_Grotesk, MuseoModerno, Inter_Tight, Inter, Figtree, Italiana } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
+// All fonts are self-hosted (src/app/fonts, OFL, via Fontsource) so builds
+// never depend on fetching Google Fonts. Variable fonts cover every weight.
+
 // Dote, elegant serif display for the Manage-event / celebration pages.
-const italiana = Italiana({
+const italiana = localFont({
   variable: "--font-italiana",
-  subsets: ["latin"],
-  weight: ["400"],
+  src: "./fonts/italiana-latin-400-normal.woff2",
+  weight: "400",
   display: "swap",
 });
 
 // Display, the emotional register: names, headings, wishes.
-const fraunces = Fraunces({
+const fraunces = localFont({
   variable: "--font-fraunces",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  style: ["normal", "italic"],
+  src: [
+    { path: "./fonts/fraunces-latin-wght-normal.woff2", weight: "100 900", style: "normal" },
+    { path: "./fonts/fraunces-latin-wght-italic.woff2", weight: "100 900", style: "italic" },
+  ],
   display: "swap",
 });
 
 // Body / UI, the trustworthy register: everything functional, every number.
-const hanken = Hanken_Grotesk({
+const hanken = localFont({
   variable: "--font-hanken",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  src: "./fonts/hanken-grotesk-latin-wght-normal.woff2",
+  weight: "100 900",
   display: "swap",
 });
 
-// Dote, the wordmark. Variable font (no weight array, avoids a Turbopack
-// build error and still covers the 500/600/700 weights the logo uses).
-const museo = MuseoModerno({
+// Dote, the wordmark.
+const museo = localFont({
   variable: "--font-museo",
-  subsets: ["latin"],
+  src: "./fonts/museomoderno-latin-wght-normal.woff2",
+  weight: "100 900",
   display: "swap",
 });
 
 // Dote, UI + headings.
-const interTight = Inter_Tight({
+const interTight = localFont({
   variable: "--font-inter-tight",
-  subsets: ["latin"],
-  weight: ["200", "300", "400", "500", "600", "700"],
+  src: "./fonts/inter-tight-latin-wght-normal.woff2",
+  weight: "100 900",
   display: "swap",
 });
 
 // Dote, input values.
-const inter = Inter({
+const inter = localFont({
   variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  src: "./fonts/inter-latin-wght-normal.woff2",
+  weight: "100 900",
   display: "swap",
 });
 
 // Dote, body / running text (warmer, more character than Inter).
-const figtree = Figtree({
+const figtree = localFont({
   variable: "--font-figtree",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  src: "./fonts/figtree-latin-wght-normal.woff2",
+  weight: "300 900",
   display: "swap",
 });
 
