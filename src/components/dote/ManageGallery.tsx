@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { DoteLogo } from "./Logo";
 import { BackArrow } from "./BackArrow";
-import { getHostEvent, hostEventToFlow } from "@/lib/host-events";
+import { getHostEvent, getPublicEvent, hostEventToFlow, publicEventToFlow } from "@/lib/host-events";
 
 /* ------------------------------------------------------------------ *
  * Dote, Gallery (the celebration's photo gallery; reached from the
@@ -41,20 +41,27 @@ export function ManageGallery({ id, guest = false }: { id: string; guest?: boole
   useEffect(() => {
     let alive = true;
     (async () => {
-      // Host gallery (non-guest): load the live event by id from the API,
-      // matching the Event Overview page. Fall back to local storage for
-      // offline/mock events and the guest view.
-      if (!guest) {
-        try {
+      // Load the live event from the API, matching the Event Overview page:
+      // hosts by id, guests by the invite slug (public, no auth). Fall back to
+      // local storage for offline/mock events.
+      try {
+        if (guest) {
+          const e = await getPublicEvent(id);
+          if (alive) {
+            // Keep the slug as the id so "back" returns to /i/<slug>.
+            setEv({ ...publicEventToFlow(e), id });
+            setLoaded(true);
+          }
+        } else {
           const e = await getHostEvent(id);
           if (alive) {
             setEv({ id: e.id, ...hostEventToFlow(e) });
             setLoaded(true);
           }
-          return;
-        } catch {
-          /* fall through to local storage */
         }
+        return;
+      } catch {
+        /* fall through to local storage */
       }
       try {
         const all: StoredEvent[] = JSON.parse(localStorage.getItem("dote.events") || "[]");
@@ -77,10 +84,10 @@ export function ManageGallery({ id, guest = false }: { id: string; guest?: boole
         <p className="text-[16px] text-[#6e6558]">We couldn&rsquo;t find that celebration.</p>
         <button
           type="button"
-          onClick={() => router.push("/events")}
+          onClick={() => router.push(guest ? `/i/${id}` : "/events")}
           className="rounded-[50px] bg-teal px-6 py-3 text-[14px] font-medium text-teal-ink"
         >
-          Back to Events
+          {guest ? "Back to the invite" : "Back to Events"}
         </button>
       </div>
     );
@@ -174,6 +181,7 @@ export function ManageGallery({ id, guest = false }: { id: string; guest?: boole
       {lightbox !== null && photos[lightbox] !== undefined && (
         <Lightbox
           photos={photos}
+          title={ev.title}
           index={lightbox}
           onSelect={setLightbox}
           onClose={() => setLightbox(null)}
@@ -187,15 +195,29 @@ export function ManageGallery({ id, guest = false }: { id: string; guest?: boole
 
 function Lightbox({
   photos,
+  title,
   index,
   onSelect,
   onClose,
 }: {
   photos: string[];
+  title: string;
   index: number;
   onSelect: (i: number) => void;
   onClose: () => void;
 }) {
+  const [saving, setSaving] = useState(false);
+
+  async function download() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await downloadPhoto(photos[index], `${fileStem(title)}-photo-${index + 1}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -221,6 +243,16 @@ function Lightbox({
         <span className="text-[13px] tracking-[-0.4px] text-white/80">
           {index + 1} / {photos.length}
         </span>
+        <button
+          type="button"
+          onClick={download}
+          disabled={saving}
+          aria-label="Download photo"
+          className="flex items-center gap-[6px] rounded-[10px] border border-[#b7dee7] bg-white px-3 py-[6px] text-[13px] font-medium text-teal transition hover:bg-[#f0f7f9] disabled:opacity-60"
+        >
+          <DownloadIcon className="size-4" />
+          {saving ? "Saving…" : "Download"}
+        </button>
       </div>
 
       {/* active photo */}
@@ -260,7 +292,60 @@ function Lightbox({
   );
 }
 
+/* -------------------------- download ------------------------------ */
+
+const EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/heic": "heic",
+  "image/avif": "avif",
+};
+
+/** "#Amara & Tobi 2026" -> "amara-tobi-2026" (safe on every OS). */
+function fileStem(title: string): string {
+  return (
+    title
+      .replace(/^#+/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "avela"
+  );
+}
+
+/** Save a gallery photo. Photos are data URLs (uploaded) or external URLs;
+ * both are turned into a Blob so the browser saves rather than navigates.
+ * If a remote host blocks cross-origin reads, open it in a new tab instead. */
+async function downloadPhoto(src: string, stem: string) {
+  let blob: Blob;
+  try {
+    blob = await (await fetch(src)).blob();
+  } catch {
+    window.open(src, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const ext = EXT[blob.type] ?? "jpg";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${stem}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /* ------------------------------ icons ----------------------------- */
+
+function DownloadIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
+    </svg>
+  );
+}
 
 /* vuesax/bulk/setting-3, exact Figma asset: rounded square body + two slider
    tracks & knobs. Body at 0.4 opacity like the bulk variant. */
