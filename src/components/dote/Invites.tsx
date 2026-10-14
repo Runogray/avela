@@ -196,8 +196,8 @@ export function Invites() {
     setError("");
   }
 
-  // Open the celebration's public page (by slug when we have it from the API).
-  const view = (id: string) => router.push(slugById[id] ? `/e/${slugById[id]}` : `/i/${id}`);
+  // The guest page is /i/<slug> (the public API looks events up by slug).
+  const view = (id: string) => router.push(`/i/${slugById[id] ?? id}`);
 
   return (
     <div

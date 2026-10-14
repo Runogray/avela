@@ -354,7 +354,8 @@ export function publicEventToFlow(e: PublicApiEvent) {
     time: isoToTime(e.starts_at),
     description: e.description,
     cover: e.cover_image || null,
-    gallery: (e.gallery || []).filter(Boolean),
+    // Same set the host sees: the cover is the gallery's first photo.
+    gallery: [e.cover_image, ...(e.gallery || [])].filter(Boolean) as string[],
     items,
     acceptsTransfers: !!e.accepts_transfers,
   };

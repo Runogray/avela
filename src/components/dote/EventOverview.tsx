@@ -426,7 +426,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
           <div className="flex justify-center py-8">
             <button
               type="button"
-              onClick={() => router.push(`${guest ? `/i/${ev.id}` : `/events/${ev.id}`}/gallery`)}
+              onClick={() => router.push(`${guest ? `/i/${ev.slug ?? ev.id}` : `/events/${ev.id}`}/gallery`)}
               className="bg-teal px-[42px] py-[14px] text-[16px] tracking-[0.35px] text-teal-ink transition hover:brightness-95"
             >
               Gallery
