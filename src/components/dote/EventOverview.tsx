@@ -292,14 +292,19 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
 
         {/* top bar */}
         <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-6 py-5">
-          <button
-            type="button"
-            onClick={() => router.push("/events")}
-            aria-label="Back"
-            className="grid place-items-center rounded-[10px] border border-[#b7dee7] bg-white p-[6px]"
-          >
-            <BackArrow className="size-4 text-teal" />
-          </button>
+          {/* Guests land here from an invite link, so there's nowhere to go back to. */}
+          {guest ? (
+            <span aria-hidden="true" />
+          ) : (
+            <button
+              type="button"
+              onClick={() => router.push("/events")}
+              aria-label="Back"
+              className="grid place-items-center rounded-[10px] border border-[#b7dee7] bg-white p-[6px]"
+            >
+              <BackArrow className="size-4 text-teal" />
+            </button>
+          )}
           {guest ? (
             <button
               type="button"
