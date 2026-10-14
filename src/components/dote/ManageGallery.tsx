@@ -303,11 +303,12 @@ const EXT: Record<string, string> = {
   "image/avif": "avif",
 };
 
-/** "#Amara & Tobi 2026" -> "amara-tobi-2026" (safe on every OS). */
+/** "#Nicole's Big Day" -> "nicoles-big-day" (safe on every OS). */
 function fileStem(title: string): string {
   return (
     title
       .replace(/^#+/, "")
+      .replace(/['’]/g, "") // "Nicole's" -> "nicoles", not "nicole-s"
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
