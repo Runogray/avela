@@ -23,6 +23,8 @@ export interface ApiWishlistItem {
   reserver_display: string;
   /** Confirmed cash gifts toward this item (kobo). */
   raised_kobo?: number;
+  /** Host view: has confirmed/pending gifts, so it can't be removed. */
+  has_contributions?: boolean;
 }
 
 export interface ApiGoal {
@@ -33,6 +35,8 @@ export interface ApiGoal {
   progress_pct: number;
   hide_contributions: boolean;
   hide_total: boolean;
+  /** Host view: has confirmed/pending gifts, so it can't be removed. */
+  has_contributions?: boolean;
 }
 
 export interface HostEvent {
@@ -187,6 +191,7 @@ export function hostEventToFlow(e: HostEvent) {
       anyAmount: !g.target_kobo,
       amount: Math.round((g.target_kobo || 0) / 100),
       raised: Math.round((g.raised_kobo || 0) / 100),
+      locked: !!g.has_contributions,
       hideContrib: g.hide_contributions,
       hideTotal: g.hide_total,
     })),
@@ -200,6 +205,7 @@ export function hostEventToFlow(e: HostEvent) {
       anyAmount: false,
       amount: Math.round((w.price_kobo || 0) / 100),
       raised: Math.round((w.raised_kobo || 0) / 100),
+      locked: !!w.has_contributions,
       hideContrib: false,
       hideTotal: false,
     })),

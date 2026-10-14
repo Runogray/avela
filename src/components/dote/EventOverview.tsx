@@ -14,6 +14,8 @@ import {
   startTransferGift,
   markTransferSent,
   listTransfers,
+  deleteGoal,
+  deleteWishlistItem,
   confirmTransfer,
   declineTransfer,
   type TransferDetails,
@@ -256,18 +258,31 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
   const inviteHref = ev.slug ? `/i/${ev.slug}` : `/i/${ev.id}`;
 
   // Host: remove a gift from the wishlist (persist + live update).
-  function deleteGift(itemId: string) {
-    try {
-      const all: StoredEvent[] = JSON.parse(localStorage.getItem("dote.events") || "[]");
-      const next = all.map((e) =>
-        e.id === id ? { ...e, items: (e.items ?? []).filter((it) => it.id !== itemId) } : e
-      );
-      localStorage.setItem("dote.events", JSON.stringify(next));
-    } catch {
-      /* storage unavailable */
+  /** Remove a gift from the list. Live events delete it on the server (which
+   * refuses if guests have contributed); returns an error message, if any. */
+  async function deleteGift(itemId: string): Promise<string | null> {
+    const target = ev?.items?.find((it) => it.id === itemId);
+    if (ev?.slug && target) {
+      try {
+        if (target.type === "monetary") await deleteGoal(itemId);
+        else await deleteWishlistItem(itemId);
+      } catch (err) {
+        return apiErrorMessage(err, "We couldn’t remove this gift. Please try again.");
+      }
+    } else {
+      try {
+        const all: StoredEvent[] = JSON.parse(localStorage.getItem("dote.events") || "[]");
+        const next = all.map((e) =>
+          e.id === id ? { ...e, items: (e.items ?? []).filter((it) => it.id !== itemId) } : e
+        );
+        localStorage.setItem("dote.events", JSON.stringify(next));
+      } catch {
+        /* storage unavailable */
+      }
     }
     setEv((prev) => (prev ? { ...prev, items: (prev.items ?? []).filter((it) => it.id !== itemId) } : prev));
     setViewGift(null);
+    return null;
   }
 
   return (
@@ -1008,7 +1023,7 @@ function GiftContributionsModal({
   eventTitle: string;
   onConfirmed: (naira: number) => void;
   onClose: () => void;
-  onDelete: () => void;
+  onDelete: () => Promise<string | null>;
 }) {
   // Local/mock events keep pledges in localStorage; live events load the
   // bank-transfer gifts from the API below.
@@ -1075,6 +1090,17 @@ function GiftContributionsModal({
 
   // Only confirmed money counts; pending transfers are listed for the host to check.
   const received = rows.filter((r) => r.status === "paid");
+  // A gift with confirmed or pending money can't be removed (it would orphan them).
+  const canRemove = !live || (loaded && rows.length === 0);
+  const [removeError, setRemoveError] = useState("");
+  const [removing, setRemoving] = useState(false);
+  async function remove() {
+    setRemoving(true);
+    setRemoveError("");
+    const err = await onDelete();
+    setRemoving(false);
+    if (err) setRemoveError(err);
+  }
   const total = received.reduce((s, r) => s + (r.amount || 0), 0);
   const subtitle = item.anyAmount ? "Any amount" : `₦${item.amount.toLocaleString()}`;
   const count = received.length;
@@ -1107,14 +1133,18 @@ function GiftContributionsModal({
             <BackArrow className="size-4 text-white" />
           </button>
           <h2 className="text-center font-italiana text-[24px] tracking-[-0.8px]">Contribution</h2>
-          <button
-            type="button"
-            onClick={() => setConfirmDelete(true)}
-            aria-label="Remove from list"
-            className="grid size-8 place-items-center justify-self-end text-[#ef5a43] transition hover:opacity-70"
-          >
-            <TrashIcon className="size-6" />
-          </button>
+          {canRemove ? (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              aria-label="Remove from list"
+              className="grid size-8 place-items-center justify-self-end text-[#ef5a43] transition hover:opacity-70"
+            >
+              <TrashIcon className="size-6" />
+            </button>
+          ) : (
+            <span aria-hidden="true" />
+          )}
         </header>
 
         <div className="flex flex-col items-center gap-6 px-6 pt-4 pb-10">
@@ -1188,14 +1218,18 @@ function GiftContributionsModal({
             <BackArrow className="size-4 text-white" />
           </button>
           <h2 className="font-italiana text-[32px] tracking-[-0.8px] text-black">Wishes list Contribution</h2>
-          <button
-            type="button"
-            onClick={() => setConfirmDelete(true)}
-            className="flex items-center gap-[6px] justify-self-end text-[#ef5a43] transition hover:opacity-70"
-          >
-            <span className="text-[16px] font-medium tracking-[-0.8px] text-black">Remove from list</span>
-            <TrashIcon className="size-[26px]" />
-          </button>
+          {canRemove ? (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="flex items-center gap-[6px] justify-self-end text-[#ef5a43] transition hover:opacity-70"
+            >
+              <span className="text-[16px] font-medium tracking-[-0.8px] text-black">Remove from list</span>
+              <TrashIcon className="size-[26px]" />
+            </button>
+          ) : (
+            <span aria-hidden="true" />
+          )}
         </header>
 
         {/* card */}
@@ -1281,10 +1315,12 @@ function GiftContributionsModal({
             <p className="text-[15px] text-[#8a2b1e]">
               Remove <b>{item.name}</b> from the wishlist? This can&rsquo;t be undone.
             </p>
+            {removeError && <p role="alert" className="text-[13px] text-[#a3321f]">{removeError}</p>}
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={onDelete}
+                onClick={remove}
+                disabled={removing}
                 className="h-[44px] flex-1 rounded-[50px] bg-[#bc1b06] text-[14px] font-medium text-white transition hover:brightness-110"
               >
                 Remove gift

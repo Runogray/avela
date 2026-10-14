@@ -68,6 +68,7 @@ type WishItem = {
   amount: number;
   hideContrib: boolean;
   hideTotal: boolean;
+  locked?: boolean; // has contributions: can't be removed or change type
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -1357,6 +1358,7 @@ function AddWishlistSheet({
       amount,
       hideContrib,
       hideTotal,
+      locked: editing?.locked,
     });
   }
 
@@ -1374,7 +1376,7 @@ function AddWishlistSheet({
             {editing ? "Edit Wishlist Item" : "Add Wishlist Item"}
           </h2>
           <div className="flex items-center gap-4">
-            {editing && onDelete && (
+            {editing && onDelete && !editing.locked && (
               <button type="button" onClick={onDelete} aria-label="Remove item">
                 <TrashIcon className="size-[18px] text-[#bc1b06]" />
               </button>
@@ -1386,6 +1388,12 @@ function AddWishlistSheet({
         </div>
 
         <div className="mt-5 flex-1 overflow-y-auto">
+          {editing?.locked && (
+            <p className="mb-4 rounded-[14px] border border-[#f3e3c3] bg-[#fffaf0] px-4 py-3 font-dote text-[13px] leading-relaxed text-[#7a5a1e]">
+              Guests have contributed to this gift, so it can&rsquo;t be removed or changed to another gift type. You
+              can still edit its details.
+            </p>
+          )}
           <SectionLabel>Gifting Category</SectionLabel>
 
           <div className="mt-5 flex flex-col gap-[18px]">
@@ -1393,6 +1401,7 @@ function AddWishlistSheet({
               <div className="relative">
                 <select
                   value={giftType}
+                  disabled={!!editing?.locked}
                   onChange={(e) => setGiftType(e.target.value as GiftType)}
                   className="h-[64px] w-full appearance-none rounded-[16px] border border-[#e8f1f3] bg-white px-4 pr-11 font-dote-input text-[16px] text-[#1a1a1a] outline-none focus:border-teal"
                 >
