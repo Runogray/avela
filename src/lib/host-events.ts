@@ -21,6 +21,8 @@ export interface ApiWishlistItem {
   price_kobo: number | null;
   status: "available" | "reserved";
   reserver_display: string;
+  /** Confirmed cash gifts toward this item (kobo). */
+  raised_kobo?: number;
 }
 
 export interface ApiGoal {
@@ -184,6 +186,7 @@ export function hostEventToFlow(e: HostEvent) {
       image: null as string | null,
       anyAmount: !g.target_kobo,
       amount: Math.round((g.target_kobo || 0) / 100),
+      raised: Math.round((g.raised_kobo || 0) / 100),
       hideContrib: g.hide_contributions,
       hideTotal: g.hide_total,
     })),
@@ -196,6 +199,7 @@ export function hostEventToFlow(e: HostEvent) {
       link: w.link || "",
       anyAmount: false,
       amount: Math.round((w.price_kobo || 0) / 100),
+      raised: Math.round((w.raised_kobo || 0) / 100),
       hideContrib: false,
       hideTotal: false,
     })),
@@ -336,6 +340,7 @@ export function publicEventToFlow(e: PublicApiEvent) {
       link: w.link || "",
       anyAmount: false,
       amount: Math.round((w.price_kobo || 0) / 100),
+      raised: Math.round((w.raised_kobo || 0) / 100),
       hideContrib: false,
       hideTotal: false,
     })),
