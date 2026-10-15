@@ -1383,7 +1383,7 @@ function GiftContributionsModal({
           {/* gift card */}
           <div className="flex w-full items-center gap-3 rounded-[18px] bg-white p-[18px]">
             <Thumb size={38} radius={8} />
-            <div className="flex flex-col gap-0.5">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <p className="text-[16px] font-medium leading-[1.4] tracking-[-1px] text-black">{item.name}</p>
               <div className="flex items-center gap-[4px] text-[12px] leading-[1.4] tracking-[-1px]">
                 <span className="text-[#636363]">Target</span>
@@ -1391,6 +1391,18 @@ function GiftContributionsModal({
                 <span className="text-[#101010]">{subtitle}</span>
               </div>
             </div>
+            {item.link && (
+              <a
+                href={item.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`View ${item.name} in store`}
+                className="flex h-[36px] shrink-0 items-center gap-1.5 rounded-[50px] border border-teal bg-teal/5 px-3 text-[13px] font-semibold text-teal transition hover:bg-teal/10"
+              >
+                <StoreIcon className="size-[16px]" />
+                Store ↗
+              </a>
+            )}
           </div>
 
           {live && item.purchasedAt !== undefined && (item.taken === "bought" || item.taken === "held" || (item.taken === "pending" && !!item.purchasedAt)) && (
@@ -1484,7 +1496,7 @@ function GiftContributionsModal({
             {/* gift card */}
             <div className="flex items-center gap-[18px] rounded-[42px] bg-[#f8f8f8] p-8">
               <Thumb size={75} radius={20} />
-              <div className="flex flex-col gap-2">
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <p className="text-[28px] font-semibold leading-[1.4] tracking-[-1px] text-black">{item.name}</p>
                 <div className="flex items-center gap-[4px] text-[18px] leading-[1.4] tracking-[-1px]">
                   <span className="text-[#636363]">Target</span>
@@ -1492,6 +1504,17 @@ function GiftContributionsModal({
                   <span className="text-[#101010]">{subtitle}</span>
                 </div>
               </div>
+              {item.link && (
+                <a
+                  href={item.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-[48px] shrink-0 items-center gap-2 rounded-[12px] border border-teal bg-teal/5 px-5 text-[15px] font-semibold text-teal transition hover:bg-teal/10"
+                >
+                  <StoreIcon className="size-[18px]" />
+                  View in store ↗
+                </a>
+              )}
             </div>
 
             {live && item.purchasedAt !== undefined && (item.taken === "bought" || item.taken === "held" || (item.taken === "pending" && !!item.purchasedAt)) && (
