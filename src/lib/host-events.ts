@@ -161,6 +161,12 @@ export function addEventPhoto(eventId: string, image: string, order = 0) {
     body: { image, order },
   });
 }
+export function updateEventPhoto(photoId: string, order: number) {
+  return apiFetch(`/host/photos/${photoId}/`, { method: "PATCH", body: { order } });
+}
+export function deleteEventPhoto(photoId: string) {
+  return apiFetch<void>(`/host/photos/${photoId}/`, { method: "DELETE" });
+}
 export function updateWishlistItem(itemId: string, body: Partial<ApiWishlistItem>) {
   return apiFetch<ApiWishlistItem>(`/host/wishlist-items/${itemId}/`, { method: "PATCH", body });
 }
@@ -490,6 +496,23 @@ export async function updateEventFromFlow(id: string, p: FlowPayload): Promise<H
   }
   for (const gid of goalIds) if (!keptGoals.has(gid)) await deleteGoal(gid);
   for (const iid of itemIds) if (!keptItems.has(iid)) await deleteWishlistItem(iid);
+
+  // --- sync gallery photos (index 0 of the flow's gallery is the cover) ---
+  // Saved photos come back as the same data URLs, so match by content: keep
+  // and reorder those still wanted, upload new ones, delete the rest.
+  const want = (p.gallery ?? []).slice(1);
+  const unmatched = [...current.photos].sort((a, b) => a.order - b.order);
+  const plan = want.map((image) => {
+    const i = unmatched.findIndex((ph) => ph.image === image);
+    return { image, photo: i >= 0 ? unmatched.splice(i, 1)[0] : null };
+  });
+  for (const ph of unmatched) await deleteEventPhoto(ph.id);
+  for (let i = 0; i < plan.length; i++) {
+    const order = i + 1;
+    const { image, photo } = plan[i];
+    if (!photo) await addEventPhoto(id, image, order);
+    else if (photo.order !== order) await updateEventPhoto(photo.id, order);
+  }
 
   return getHostEvent(id);
 }

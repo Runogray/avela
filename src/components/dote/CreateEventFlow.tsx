@@ -28,6 +28,10 @@ const SCREEN_BG =
 // Convert an (object) URL into a downscaled JPEG data URL so a cover photo
 // survives navigation/reload in the mock localStorage store.
 function toCoverDataURL(src: string): Promise<string | null> {
+  // Only fresh picks (blob: URLs) need shrinking. Photos already saved come
+  // back as data URLs; re-encoding them would degrade them on every save and
+  // stop the edit sync from recognising them as unchanged.
+  if (!src.startsWith("blob:")) return Promise.resolve(src || null);
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -195,7 +199,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
       // Durable cover (first photo) + item images as data URLs (object URLs
       // don't survive navigation/reload).
       const gallery = (
-        await Promise.all(photos.slice(0, 6).map((p) => toCoverDataURL(p)))
+        await Promise.all(photos.slice(0, 12).map((p) => toCoverDataURL(p)))
       ).filter(Boolean) as string[];
       const cover = gallery[0] ?? null;
       const slimItems = await Promise.all(
