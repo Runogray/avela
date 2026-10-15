@@ -523,15 +523,18 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
           item={viewGift}
           eventTitle={ev.title}
           occasion={ev.occasion}
-          onConfirmed={(naira) =>
-            // A confirmed transfer moves this gift's progress bar right away.
+          onConfirmed={(naira) => {
+            // A confirmed transfer moves this gift's progress bar right away,
+            // then reload so its tag (e.g. Pending -> Bought) comes from the server.
             setEv((cur) =>
               cur && {
                 ...cur,
                 items: cur.items?.map((x) => (x.id === viewGift.id ? { ...x, raised: (x.raised ?? 0) + naira } : x)),
               },
-            )
-          }
+            );
+            setReloadKey((k) => k + 1);
+          }}
+          onDeclined={() => setReloadKey((k) => k + 1)}
           onBoughtConfirmed={() => {
             const mark = (x: StoredItem) => ({ ...x, taken: "bought" as const });
             setEv((cur) => cur && { ...cur, items: cur.items?.map((x) => (x.id === viewGift.id ? mark(x) : x)) });
@@ -1201,6 +1204,7 @@ function GiftContributionsModal({
   eventTitle,
   occasion,
   onConfirmed,
+  onDeclined,
   onReleased,
   onBoughtConfirmed,
   onClose,
@@ -1212,6 +1216,7 @@ function GiftContributionsModal({
   eventTitle: string;
   occasion?: string;
   onConfirmed: (naira: number) => void;
+  onDeclined: () => void;
   onReleased: () => void;
   onBoughtConfirmed: () => void;
   onClose: () => void;
@@ -1273,6 +1278,7 @@ function GiftContributionsModal({
     try {
       await declineTransfer(eventId, r.id);
       setRows((cur) => cur.filter((x) => x.id !== r.id));
+      onDeclined(); // e.g. a Pending item reopens
     } catch {
       /* leave it; the host can retry */
     } finally {
