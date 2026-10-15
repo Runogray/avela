@@ -30,6 +30,8 @@ export interface ApiWishlistItem {
   availability?: "available" | "held" | "pending" | "bought" | "funded";
   /** Host view: who reserved/bought it and when. */
   reserved_by_name?: string;
+  reserved_by_email?: string;
+  thanked_at?: string | null;
   reserved_until?: string | null;
   purchased_at?: string | null;
   /** Host view: has confirmed/pending gifts, so it can't be removed. */
@@ -229,6 +231,8 @@ export function hostEventToFlow(e: HostEvent) {
       taken:
         w.availability && w.availability !== "available" ? w.availability : undefined,
       reservedBy: w.reserved_by_name || "",
+      reservedByEmail: w.reserved_by_email || "",
+      thankedAt: w.thanked_at || null,
       purchasedAt: w.purchased_at || null,
       locked: !!w.has_contributions,
       hideContrib: false,
@@ -285,7 +289,7 @@ export function getPublicEvent(slug: string) {
 /** Guest taps "Buy the gift": holds the item for them for 10 minutes. */
 export function reserveWishlistItem(
   itemId: string,
-  body: { guest_name: string; show_name: boolean },
+  body: { guest_name: string; guest_email?: string; show_name: boolean },
 ) {
   return apiFetch<{ hold_token: string; reserved_until: string }>(`/wishlist-items/${itemId}/reserve/`, {
     method: "POST",
@@ -331,6 +335,7 @@ export function startTransferGift(
   body: {
     amount_kobo: number;
     giver_name: string;
+    giver_email?: string;
     goal_id?: string | null;
     wishlist_item_id?: string | null;
     show_name?: boolean;
@@ -349,6 +354,8 @@ export function markTransferSent(slug: string, giftId: string) {
 export interface HostTransfer {
   id: string;
   giver_name: string;
+  giver_email: string;
+  thanked_at: string | null;
   amount_kobo: number;
   reference: string;
   status: "initiated" | "paid" | "failed" | "reversed";
@@ -367,6 +374,19 @@ export function listTransfers(eventId: string) {
 
 export function confirmTransfer(eventId: string, giftId: string) {
   return apiFetch<HostTransfer>(`/host/events/${eventId}/transfers/${giftId}/confirm/`, { method: "POST" });
+}
+
+/** Host emails a thank-you note to the guest behind a received gift. */
+export function thankTransfer(eventId: string, giftId: string, message: string) {
+  return apiFetch<HostTransfer>(`/host/events/${eventId}/transfers/${giftId}/thank-you/`, {
+    method: "POST",
+    body: { message },
+  });
+}
+
+/** Host emails a thank-you note to the guest who bought a wishlist gift. */
+export function thankBuyer(itemId: string, message: string) {
+  return apiFetch<ApiWishlistItem>(`/host/wishlist-items/${itemId}/thank-you/`, { method: "POST", body: { message } });
 }
 
 export function declineTransfer(eventId: string, giftId: string) {
@@ -404,6 +424,8 @@ export function publicEventToFlow(e: PublicApiEvent) {
       taken:
         w.availability && w.availability !== "available" ? w.availability : undefined,
       reservedBy: w.reserved_by_name || "",
+      reservedByEmail: w.reserved_by_email || "",
+      thankedAt: w.thanked_at || null,
       purchasedAt: w.purchased_at || null,
       hideContrib: false,
       hideTotal: false,

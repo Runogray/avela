@@ -20,6 +20,8 @@ import {
   releaseHold,
   releaseWishlistItem,
   confirmWishlistBought,
+  thankTransfer,
+  thankBuyer,
   confirmTransfer,
   declineTransfer,
   type TransferDetails,
@@ -50,6 +52,8 @@ type StoredItem = {
   // "funded": off the list for good.
   taken?: "held" | "pending" | "bought" | "funded"; // "pending": awaiting the host's approval
   reservedBy?: string; // host view: who reserved or bought it
+  reservedByEmail?: string; // host view: the buyer's email, for a thank-you
+  thankedAt?: string | null; // host view: when the host thanked the buyer
   purchasedAt?: string | null; // host view: when the guest confirmed buying it
   hideContrib?: boolean; // guests don't see per-person contribution amounts
   hideTotal?: boolean; // guests don't see the total raised
@@ -583,6 +587,8 @@ function ContributeModal({
     item.anyAmount ? 0 : remaining ?? item.amount ?? 0,
   );
   const [name, setName] = useState("");
+  // Optional: we tell the guest when it's received, and the host can thank them.
+  const [email, setEmail] = useState("");
   const [done, setDone] = useState(false);
   // Cash gifts: after Submit the guest sees the host's account to transfer into.
   const [transfer, setTransfer] = useState<TransferDetails | null>(null);
@@ -594,9 +600,10 @@ function ContributeModal({
   const buying = canBuy && mode === "buy";
   const cashUnavailable = !buying && (!acceptsTransfers || !slug);
   const overRemaining = !buying && remaining !== null && amount > remaining;
+  const emailBad = email.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const valid = buying
-    ? name.trim().length > 0
-    : amount > 0 && name.trim().length > 0 && !cashUnavailable && !overRemaining;
+    ? name.trim().length > 0 && !emailBad
+    : amount > 0 && name.trim().length > 0 && !cashUnavailable && !overRemaining && !emailBad;
 
   async function submit() {
     if (!valid || busy) return;
@@ -606,7 +613,11 @@ function ContributeModal({
       setBusy(true);
       setError("");
       try {
-        const h = await reserveWishlistItem(item.id, { guest_name: name.trim(), show_name: true });
+        const h = await reserveWishlistItem(item.id, {
+          guest_name: name.trim(),
+          guest_email: email.trim() || undefined,
+          show_name: true,
+        });
         setHold({ token: h.hold_token, until: new Date(h.reserved_until).getTime() });
         onChanged();
       } catch (err) {
@@ -623,6 +634,7 @@ function ContributeModal({
       const t = await startTransferGift(slug!, {
         amount_kobo: amount * 100,
         giver_name: name.trim(),
+        giver_email: email.trim() || undefined,
         goal_id: item.type === "monetary" ? item.id : null,
         wishlist_item_id: item.type === "physical" ? item.id : null,
       });
@@ -835,6 +847,25 @@ function ContributeModal({
                 placeholder="e.g. Ada Obi"
                 className="h-[52px] w-full rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-4 text-[15px] text-[#1c1611] outline-none transition placeholder:text-[#cccccc] focus:border-teal"
               />
+            </WishField>
+            <WishField label="Your email (optional)">
+              <input
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                aria-invalid={emailBad || undefined}
+                className={`h-[52px] w-full rounded-[14px] border bg-[#fbfbfb] px-4 text-[15px] text-[#1c1611] outline-none transition placeholder:text-[#cccccc] focus:border-teal ${
+                  emailBad ? "border-[#e8a598]" : "border-[#e8f1f3]"
+                }`}
+              />
+              <span className="text-[12px] leading-relaxed text-[#7a7266]">
+                {emailBad
+                  ? "That email doesn’t look right."
+                  : `We’ll let you know when ${recipient} receives your gift, and they can thank you.`}
+              </span>
             </WishField>
 
             {overRemaining && remaining !== null && (
@@ -1171,6 +1202,7 @@ type Contribution = {
   status?: string;
   reference?: string;
   markedSent?: boolean; // guest tapped "I've sent it"
+  thankedAt?: string | null; // host sent a thank-you note
   createdAt: number;
 };
 
@@ -1249,6 +1281,8 @@ function GiftContributionsModal({
             status: t.status,
             reference: t.reference,
             markedSent: !!t.marked_sent_at,
+            email: t.giver_email || undefined,
+            thankedAt: t.thanked_at || null,
             createdAt: new Date(t.created_at).getTime(),
           })),
         );
@@ -1397,6 +1431,16 @@ function GiftContributionsModal({
                     {r.status !== "paid" && (
                       <PendingTransfer r={r} busy={acting === r.id} onConfirm={() => confirm(r)} onDecline={() => decline(r)} />
                     )}
+                    {live && r.status === "paid" && r.email && (
+                      <ThankYou
+                        thanked={!!r.thankedAt}
+                        guest={r.name}
+                        send={async (msg) => {
+                          await thankTransfer(eventId, r.id, msg);
+                          setRows((cur) => cur.map((x) => (x.id === r.id ? { ...x, thankedAt: new Date().toISOString() } : x)));
+                        }}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -1497,6 +1541,16 @@ function GiftContributionsModal({
                     {r.status !== "paid" && (
                       <PendingTransfer r={r} busy={acting === r.id} onConfirm={() => confirm(r)} onDecline={() => decline(r)} />
                     )}
+                    {live && r.status === "paid" && r.email && (
+                      <ThankYou
+                        thanked={!!r.thankedAt}
+                        guest={r.name}
+                        send={async (msg) => {
+                          await thankTransfer(eventId, r.id, msg);
+                          setRows((cur) => cur.map((x) => (x.id === r.id ? { ...x, thankedAt: new Date().toISOString() } : x)));
+                        }}
+                      />
+                    )}
                     </div>
                   ))}
                 </div>
@@ -1557,6 +1611,7 @@ function ReservationCard({
   onConfirmed: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [thanked, setThanked] = useState(false);
   const [error, setError] = useState("");
   const who = item.reservedBy || "A guest";
   const when = item.purchasedAt
@@ -1604,6 +1659,18 @@ function ReservationCard({
               : "They have a few minutes to buy it. If they don’t confirm, it goes back on your list on its own."}
         </p>
         {error && <p role="alert" className="text-[13px] text-[#a3321f]">{error}</p>}
+        {item.taken === "bought" && item.reservedByEmail && (
+          <div className="mt-2">
+            <ThankYou
+              thanked={!!item.thankedAt || thanked}
+              guest={who}
+              send={async (msg) => {
+                await thankBuyer(item.id, msg);
+                setThanked(true);
+              }}
+            />
+          </div>
+        )}
       </div>
       <div className="flex shrink-0 gap-2">
         <button
@@ -1639,6 +1706,86 @@ function localContributions(eventId: string, itemId: string): Contribution[] {
   } catch {
     return [];
   }
+}
+
+/* Host: write a short thank-you that's emailed to the guest. */
+function ThankYou({
+  thanked,
+  guest,
+  send,
+}: {
+  thanked: boolean;
+  guest: string;
+  send: (message: string) => Promise<void>;
+}) {
+  const first = (guest || "").trim().split(" ")[0] || "them";
+  const [open, setOpen] = useState(false);
+  const [msg, setMsg] = useState(`Thank you so much, ${first}! It means a lot to us.`);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  if (thanked) {
+    return (
+      <p className="flex items-center gap-1 text-[13px] font-medium text-[#1f6b33]">
+        <CheckMarkIcon className="size-[14px]" /> Thank-you sent
+      </p>
+    );
+  }
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="self-start rounded-[50px] border border-teal/40 bg-white px-4 py-[7px] text-[13px] font-medium text-teal transition hover:bg-teal/5"
+      >
+        Say thank you
+      </button>
+    );
+  }
+  async function submit() {
+    if (!msg.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await send(msg.trim());
+    } catch (err) {
+      setError(apiErrorMessage(err, "We couldn’t send your thank-you. Please try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex w-full flex-col gap-2">
+      <label className="text-[12px] font-medium text-[#636363]" htmlFor={`thanks-${first}`}>
+        {`Your thank-you to ${first} (we’ll email it)`}
+      </label>
+      <textarea
+        id={`thanks-${first}`}
+        value={msg}
+        onChange={(e) => setMsg(e.target.value.slice(0, 2000))}
+        rows={3}
+        className="w-full resize-y rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-3 py-2 text-[14px] leading-relaxed text-[#1c1611] outline-none focus:border-teal"
+      />
+      {error && <p role="alert" className="text-[13px] text-[#a3321f]">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={busy || !msg.trim()}
+          className="h-[36px] rounded-[50px] bg-teal px-4 text-[13px] font-medium text-teal-ink transition hover:brightness-95 disabled:opacity-60"
+        >
+          {busy ? "Sending…" : "Send thank-you"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          disabled={busy}
+          className="h-[36px] rounded-[50px] border border-[#e0dccf] bg-white px-4 text-[13px] font-medium text-[#5c5c5c] transition hover:bg-black/5"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function ContribStatus({ status }: { status?: string }) {
