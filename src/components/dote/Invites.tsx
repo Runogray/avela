@@ -27,6 +27,7 @@ type StoredEvent = {
   time?: string;
   venue?: string;
   cover?: string | null;
+  coverPos?: string;
   items?: StoredItem[];
 };
 
@@ -100,6 +101,7 @@ export function Invites() {
           time: isoToTime(e.starts_at),
           venue: e.venue,
           cover: e.cover_image || null,
+          coverPos: e.cover_position || "",
         });
         slugs[e.id] = e.slug;
         counts[e.id] = e.wishlist_count;
@@ -381,7 +383,7 @@ function InviteCard({
           >
             {cover && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={cover} alt="" className="size-full object-cover" />
+              <img src={cover} alt="" className="size-full object-cover" style={{ objectPosition: event.coverPos || undefined }} />
             )}
             <div className="absolute inset-0 bg-black/[0.38]" />
           </div>

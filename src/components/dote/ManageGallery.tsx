@@ -20,6 +20,7 @@ type StoredEvent = {
   title: string;
   occasion: string;
   cover?: string | null;
+  coverPos?: string; // cover focus point (object-position)
   gallery?: string[];
 };
 
@@ -104,7 +105,7 @@ export function ManageGallery({ id, guest = false }: { id: string; guest?: boole
         <div className="absolute inset-0" style={{ background: occ.cover }} />
         {cover && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: ev.cover ? ev.coverPos || undefined : undefined }} />
         )}
         <div
           className="absolute inset-0"

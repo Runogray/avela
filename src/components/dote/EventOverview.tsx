@@ -65,6 +65,7 @@ type StoredEvent = {
   gallery?: string[];
   items?: StoredItem[];
   acceptsTransfers?: boolean; // host added a bank account (guest view)
+  coverPos?: string; // cover focus point (object-position)
 };
 
 const OCC: Record<string, { label: string; cover: string }> = {
@@ -298,7 +299,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
         <div className="absolute inset-0" style={{ background: occ.cover }} />
         {cover && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ objectPosition: ev.coverPos || undefined }} />
         )}
         <div
           className="absolute inset-0"

@@ -9,6 +9,7 @@ import { DoteLogo } from "./Logo";
 import { SidebarLogout } from "./SidebarLogout";
 import { BackArrow } from "./BackArrow";
 import { Toast } from "./Toast";
+import { AdjustCoverSheet } from "./AdjustCoverSheet";
 import { createEventFromFlow, getHostEvent, hostEventToFlow, updateEventFromFlow } from "@/lib/host-events";
 import { getSession } from "@/lib/auth";
 import { isNetworkError } from "@/lib/api";
@@ -104,6 +105,11 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
 
   // step 2
   const [photos, setPhotos] = useState<string[]>([]);
+  // Cover focus point, tied to the photo it was set on: choosing a different
+  // cover starts it back at the centre.
+  const [coverFocus, setCoverFocus] = useState<{ src: string; pos: string }>({ src: "", pos: "" });
+  const coverPos = photos[0] && coverFocus.src === photos[0] ? coverFocus.pos : "";
+  const [adjustOpen, setAdjustOpen] = useState(false);
 
   // step 3
   const [items, setItems] = useState<WishItem[]>([]);
@@ -159,6 +165,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
         setDate(f.date);
         setDescription(f.description);
         setPhotos(f.gallery);
+        setCoverFocus({ src: f.gallery[0] ?? "", pos: f.coverPos ?? "" });
         setItems(f.items as WishItem[]);
       } catch {
         applyLocal(); // offline fallback
@@ -218,7 +225,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
       );
       const payload = {
         occasion, category, title, location, dress, time, date, description,
-        cover, gallery, items: slimItems, publish: true,
+        cover, coverPos, gallery, items: slimItems, publish: true,
       };
 
       // --- live API first ---
@@ -303,7 +310,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
         )}
 
         {step === "upload" && (
-          <UploadStep photos={photos} setPhotos={setPhotos} onContinue={next} />
+          <UploadStep photos={photos} setPhotos={setPhotos} coverPos={coverPos} onAdjustCover={() => setAdjustOpen(true)} onContinue={next} />
         )}
 
         {step === "wishlist" && (
@@ -345,7 +352,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
                   />
                 )}
                 {step === "upload" && (
-                  <DesktopUpload photos={photos} setPhotos={setPhotos} onContinue={next} />
+                  <DesktopUpload photos={photos} setPhotos={setPhotos} coverPos={coverPos} onAdjustCover={() => setAdjustOpen(true)} onContinue={next} />
                 )}
                 {step === "wishlist" && (
                   <DesktopWishlist
@@ -389,6 +396,18 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
                 }
               : undefined
           }
+        />
+      )}
+
+      {adjustOpen && photos[0] && (
+        <AdjustCoverSheet
+          src={photos[0]}
+          pos={coverPos}
+          onClose={() => setAdjustOpen(false)}
+          onSave={(pos) => {
+            setCoverFocus({ src: photos[0], pos });
+            setAdjustOpen(false);
+          }}
         />
       )}
 
@@ -770,10 +789,14 @@ function SelectInput({
 function UploadStep({
   photos,
   setPhotos,
+  coverPos,
+  onAdjustCover,
   onContinue,
 }: {
   photos: string[];
   setPhotos: (p: string[]) => void;
+  coverPos: string;
+  onAdjustCover: () => void;
   onContinue: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -843,6 +866,7 @@ function UploadStep({
                 src={photos[active]}
                 alt={`Photo ${active + 1}`}
                 className="absolute inset-0 h-full w-full object-cover"
+                style={{ objectPosition: active === 0 ? coverPos || undefined : undefined }}
               />
               <button
                 type="button"
@@ -853,9 +877,18 @@ function UploadStep({
                 <TrashIcon className="size-5 text-[#bc1b06]" />
               </button>
               {active === 0 ? (
-                <span className="absolute right-5 top-5 flex items-center gap-1 rounded-[10px] bg-teal px-3 py-[7px] text-[12px] font-medium text-teal-ink">
-                  <StarIcon className="size-[14px]" filled /> Cover photo
-                </span>
+                <>
+                  <span className="absolute right-5 top-5 flex items-center gap-1 rounded-[10px] bg-teal px-3 py-[7px] text-[12px] font-medium text-teal-ink">
+                    <StarIcon className="size-[14px]" filled /> Cover photo
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onAdjustCover}
+                    className="absolute bottom-5 right-5 flex items-center gap-1 rounded-[10px] bg-white/95 px-3 py-[7px] text-[12px] font-medium text-teal shadow-sm transition hover:bg-white"
+                  >
+                    <MoveIcon className="size-[14px]" /> Adjust cover
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"
@@ -1820,10 +1853,14 @@ function DesktopDetails({
 function DesktopUpload({
   photos,
   setPhotos,
+  coverPos,
+  onAdjustCover,
   onContinue,
 }: {
   photos: string[];
   setPhotos: (p: string[]) => void;
+  coverPos: string;
+  onAdjustCover: () => void;
   onContinue: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -1875,7 +1912,12 @@ function DesktopUpload({
           <>
             <div className="relative h-[329px] w-[640px] max-w-full overflow-hidden rounded-[20px]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={photos[active]} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              <img
+                src={photos[active]}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{ objectPosition: active === 0 ? coverPos || undefined : undefined }}
+              />
               <button
                 type="button"
                 onClick={removeActive}
@@ -1885,9 +1927,18 @@ function DesktopUpload({
                 <TrashIcon className="size-5 text-[#bc1b06]" />
               </button>
               {active === 0 ? (
-                <span className="absolute right-5 top-5 flex items-center gap-1 rounded-[10px] bg-teal px-3 py-[7px] text-[12px] font-medium text-teal-ink">
-                  <StarIcon className="size-[14px]" filled /> Cover photo
-                </span>
+                <>
+                  <span className="absolute right-5 top-5 flex items-center gap-1 rounded-[10px] bg-teal px-3 py-[7px] text-[12px] font-medium text-teal-ink">
+                    <StarIcon className="size-[14px]" filled /> Cover photo
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onAdjustCover}
+                    className="absolute bottom-5 right-5 flex items-center gap-1 rounded-[10px] bg-white/95 px-3 py-[7px] text-[12px] font-medium text-teal shadow-sm transition hover:bg-white"
+                  >
+                    <MoveIcon className="size-[14px]" /> Adjust cover
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"
@@ -2169,6 +2220,14 @@ function TrashIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-13M9 7V4h6v3" />
+    </svg>
+  );
+}
+
+function MoveIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3" />
     </svg>
   );
 }

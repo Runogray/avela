@@ -46,6 +46,7 @@ type StoredEvent = {
   time: string;
   venue: string;
   cover: string | null;
+  coverPos?: string;
   wishes: number;
   createdAt: number;
   hidden?: boolean;
@@ -82,6 +83,7 @@ function toStored(e: HostEvent): StoredEvent {
     time: isoToTime(e.starts_at),
     venue: e.venue,
     cover: e.cover_image || null,
+    coverPos: e.cover_position || "",
     wishes: e.wishlist_items.length,
     createdAt: new Date(e.created_at).getTime(),
     hidden: !e.is_published,
@@ -421,6 +423,7 @@ function EventCard({
             src={event.cover}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
+            style={{ objectPosition: event.coverPos || undefined }}
             onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
           />
         )}

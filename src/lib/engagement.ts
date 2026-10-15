@@ -19,6 +19,7 @@ export interface ApiInviteEvent {
   starts_at: string;
   venue: string;
   cover_image: string;
+  cover_position?: string;
   host_first_name: string;
   wishlist_count: number;
 }

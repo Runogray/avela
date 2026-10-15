@@ -47,6 +47,8 @@ export interface HostEvent {
   occasion: ApiOccasion;
   category: string;
   cover_image: string;
+  /** Cover focus point, CSS object-position ("50% 30%"); "" = centre. */
+  cover_position?: string;
   starts_at: string; // ISO
   venue: string;
   dress_code: string;
@@ -128,6 +130,8 @@ type EventWrite = Partial<{
   occasion: ApiOccasion;
   category: string;
   cover_image: string;
+  /** Cover focus point, CSS object-position ("50% 30%"); "" = centre. */
+  cover_position?: string;
   starts_at: string;
   venue: string;
   dress_code: string;
@@ -226,6 +230,7 @@ export function hostEventToFlow(e: HostEvent) {
     time: isoToTime(e.starts_at),
     description: e.description,
     cover: e.cover_image || null,
+    coverPos: e.cover_position || "",
     gallery: [e.cover_image, ...e.photos.map((p) => p.image)].filter(Boolean) as string[],
     items,
   };
@@ -241,6 +246,8 @@ export interface PublicApiEvent {
   description: string;
   occasion: ApiOccasion;
   cover_image: string;
+  /** Cover focus point, CSS object-position ("50% 30%"); "" = centre. */
+  cover_position?: string;
   starts_at: string;
   venue: string;
   dress_code: string;
@@ -366,6 +373,7 @@ export function publicEventToFlow(e: PublicApiEvent) {
     time: isoToTime(e.starts_at),
     description: e.description,
     cover: e.cover_image || null,
+    coverPos: e.cover_position || "",
     // Same set the host sees: the cover is the gallery's first photo.
     gallery: [e.cover_image, ...(e.gallery || [])].filter(Boolean) as string[],
     items,
@@ -397,6 +405,7 @@ export type FlowPayload = {
   date: string;
   description: string;
   cover: string | null; // data URL
+  coverPos?: string; // cover focus point (object-position)
   gallery?: string[]; // extra photo data URLs (beyond the cover)
   items: FlowItem[];
   publish?: boolean;
@@ -411,6 +420,7 @@ export async function createEventFromFlow(p: FlowPayload): Promise<HostEvent> {
     occasion: occUiToApi(p.occasion),
     category: p.category || "",
     cover_image: p.cover || "",
+    cover_position: p.coverPos || "",
     starts_at: dateTimeToIso(p.date, p.time),
     venue: p.location || "",
     dress_code: p.dress || "",
@@ -456,6 +466,7 @@ export async function updateEventFromFlow(id: string, p: FlowPayload): Promise<H
     occasion: occUiToApi(p.occasion),
     category: p.category || "",
     cover_image: p.cover || "",
+    cover_position: p.coverPos || "",
     starts_at: dateTimeToIso(p.date, p.time),
     venue: p.location || "",
     dress_code: p.dress || "",
