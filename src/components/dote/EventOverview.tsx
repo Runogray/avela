@@ -41,6 +41,8 @@ type StoredItem = {
   anyAmount: boolean;
   amount: number;
   raised?: number;
+  remaining?: number | null; // left to fully fund (physical gifts with a price)
+  taken?: "bought" | "funded"; // off the list: a guest is buying it / it's fully funded
   hideContrib?: boolean; // guests don't see per-person contribution amounts
   hideTotal?: boolean; // guests don't see the total raised
 };
@@ -131,6 +133,8 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [contribute, setContribute] = useState<StoredItem | null>(null);
+  // Bumped after a guest reserves or gives, to reload what's still available.
+  const [reloadKey, setReloadKey] = useState(0);
   const [viewGift, setViewGift] = useState<StoredItem | null>(null);
   // Host view: the account guests transfer cash gifts into (undefined = loading).
   const [bankAcct, setBankAcct] = useState<BankAccount | null | undefined>(undefined);
@@ -186,7 +190,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
     return () => {
       alive = false;
     };
-  }, [id, guest]);
+  }, [id, guest, reloadKey]);
 
   // Show a success toast after an edit saved (CreateEventFlow redirects here
   // with ?updated=1), then strip the flag from the URL.
@@ -467,7 +471,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
                 item={{ ...it, raised: (it.raised ?? 0) + (ev.slug ? 0 : contribTotals[it.id] ?? 0) }}
                 theme={THEMES[i % THEMES.length]}
                 guest={guest}
-                onOpen={guest ? () => setContribute(it) : () => setViewGift(it)}
+                onOpen={guest ? (it.taken ? undefined : () => setContribute(it)) : () => setViewGift(it)}
               />
             ))}
           </div>
@@ -499,6 +503,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
           item={contribute}
           recipient={RECIPIENT[ev.occasion] ?? "the celebrant"}
           onClose={() => setContribute(null)}
+          onChanged={() => setReloadKey((k) => k + 1)}
         />
       )}
 
@@ -535,17 +540,26 @@ function ContributeModal({
   item,
   recipient,
   onClose,
+  onChanged,
 }: {
   slug?: string;
   acceptsTransfers: boolean;
   item: StoredItem;
   recipient: string;
   onClose: () => void;
+  onChanged: () => void;
 }) {
-  // Physical gifts can be bought (reserved) outright or contributed toward.
-  const canBuy = item.type === "physical";
+  // What's still needed for a priced physical gift (confirmed gifts only).
+  const remaining =
+    item.type === "physical" && item.amount > 0 ? Math.max(0, item.remaining ?? item.amount - (item.raised ?? 0)) : null;
+  // Physical gifts can be bought (reserved) outright or contributed toward —
+  // but once friends are chipping in, buying it outright would double up.
+  const chippedIn = (item.raised ?? 0) > 0;
+  const canBuy = item.type === "physical" && !chippedIn;
   const [mode, setMode] = useState<"contribute" | "buy">("contribute");
-  const [amount, setAmount] = useState<number>(item.anyAmount ? 0 : item.amount || 0);
+  const [amount, setAmount] = useState<number>(
+    item.anyAmount ? 0 : remaining ?? item.amount ?? 0,
+  );
   const [name, setName] = useState("");
   const [done, setDone] = useState(false);
   // Cash gifts: after Submit the guest sees the host's account to transfer into.
@@ -555,14 +569,28 @@ function ContributeModal({
 
   const buying = canBuy && mode === "buy";
   const cashUnavailable = !buying && (!acceptsTransfers || !slug);
-  const valid = buying ? name.trim().length > 0 : amount > 0 && name.trim().length > 0 && !cashUnavailable;
+  const overRemaining = !buying && remaining !== null && amount > remaining;
+  const valid = buying
+    ? name.trim().length > 0
+    : amount > 0 && name.trim().length > 0 && !cashUnavailable && !overRemaining;
 
   async function submit() {
     if (!valid || busy) return;
     if (buying) {
-      // Lock the item to this guest so no one else buys the same thing.
-      reserveWishlistItem(item.id, { guest_name: name.trim(), show_name: true }).catch(() => {});
-      setDone(true);
+      // Lock the item to this guest so no one else buys the same thing. If
+      // someone got there first, say so instead of pretending it worked.
+      setBusy(true);
+      setError("");
+      try {
+        await reserveWishlistItem(item.id, { guest_name: name.trim(), show_name: true });
+        setDone(true);
+        onChanged();
+      } catch (err) {
+        setError(apiErrorMessage(err, "We couldn’t reserve this gift. Please try again."));
+        onChanged();
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     setBusy(true);
@@ -577,6 +605,7 @@ function ContributeModal({
       setTransfer(t);
     } catch (err) {
       setError(apiErrorMessage(err, "We couldn’t start your gift. Please try again."));
+      onChanged(); // e.g. it was just bought or fully funded: refresh the list
     } finally {
       setBusy(false);
     }
@@ -589,6 +618,7 @@ function ContributeModal({
     await markTransferSent(slug!, transfer.gift_id).catch(() => {});
     setBusy(false);
     setDone(true);
+    onChanged();
   }
 
   return (
@@ -662,7 +692,11 @@ function ContributeModal({
                 <div>
                   <p className="text-[17px] font-medium tracking-[-0.3px] text-black">{item.name}</p>
                   <p className="text-[13px] text-[#7a7266]">
-                    {item.anyAmount ? "Any amount" : `Target · ₦${item.amount.toLocaleString()}`}
+                    {item.anyAmount
+                      ? "Any amount"
+                      : remaining !== null && chippedIn
+                        ? `₦${remaining.toLocaleString()} left of ₦${item.amount.toLocaleString()}`
+                        : `Target · ₦${item.amount.toLocaleString()}`}
                   </p>
                 </div>
               </div>
@@ -721,12 +755,20 @@ function ContributeModal({
                 {(() => {
                   // Show at most 4 amount chips. When the "Full" chip is shown,
                   // leave room for it by trimming the quick amounts to 3.
-                  const showFull = !item.anyAmount && item.amount > 0;
-                  const quick = showFull ? QUICK_AMOUNTS.slice(0, 3) : QUICK_AMOUNTS;
+                  const full = remaining ?? item.amount;
+                  const showFull = !item.anyAmount && full > 0;
+                  // Never offer a quick amount bigger than what's left.
+                  const quick = (showFull ? QUICK_AMOUNTS.slice(0, 3) : QUICK_AMOUNTS).filter(
+                    (a) => remaining === null || a < remaining,
+                  );
                   return (
                     <>
                       {showFull && (
-                        <AmountChip label={`Full ₦${item.amount.toLocaleString()}`} active={amount === item.amount} onClick={() => setAmount(item.amount)} />
+                        <AmountChip
+                          label={`${chippedIn && remaining !== null ? "Remaining" : "Full"} ₦${full.toLocaleString()}`}
+                          active={amount === full}
+                          onClick={() => setAmount(full)}
+                        />
                       )}
                       {quick.map((a) => (
                         <AmountChip key={a} label={`₦${a.toLocaleString()}`} active={amount === a} onClick={() => setAmount(a)} />
@@ -748,6 +790,16 @@ function ContributeModal({
               />
             </WishField>
 
+            {overRemaining && remaining !== null && (
+              <p className="rounded-[14px] border border-[#f3e3c3] bg-[#fffaf0] px-4 py-3 text-[13px] leading-relaxed text-[#7a5a1e]">
+                Only &#8358;{remaining.toLocaleString()} is left to fully fund this gift.
+              </p>
+            )}
+            {chippedIn && item.type === "physical" && (
+              <p className="-mt-2 text-[12px] leading-relaxed text-[#7a7266]">
+                Friends are already chipping in on this gift, so it can only be contributed to now.
+              </p>
+            )}
             {cashUnavailable && (
               <p className="rounded-[14px] border border-[#f3e3c3] bg-[#fffaf0] px-4 py-3 text-[13px] leading-relaxed text-[#7a5a1e]">
                 Cash gifts aren&rsquo;t open yet. The host still needs to add the bank account to send them to. Please
@@ -767,7 +819,9 @@ function ContributeModal({
               className="h-[54px] w-full rounded-[50px] text-[15px] font-medium tracking-[0.35px] text-teal-ink transition disabled:cursor-not-allowed disabled:bg-[#d0ebf1] enabled:bg-teal enabled:hover:brightness-95"
             >
               {buying
-                ? `Reserve ${item.name}`
+                ? busy
+                  ? "Just a moment…"
+                  : `Reserve ${item.name}`
                 : busy
                   ? "Just a moment…"
                   : `Contribute${amount > 0 ? ` ₦${amount.toLocaleString()}` : ""}`}
@@ -1709,9 +1763,12 @@ function WishRow({
   // When the host hides contribution amounts / the running total for this wish,
   // the progress bar is hidden for everyone — host and guests — so the host can
   // clearly see it's hidden.
-  const showProgress = !(item.hideContrib || item.hideTotal);
+  // A bought gift has no contributions to show, so its bar is hidden too.
+  const showProgress = !(item.hideContrib || item.hideTotal) && item.taken !== "bought";
+  const takenLabel = item.taken === "bought" ? "Bought" : item.taken === "funded" ? "Fully funded" : null;
   return (
     <div
+      aria-disabled={takenLabel && !onOpen ? true : undefined}
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
       onClick={onOpen}
@@ -1727,7 +1784,7 @@ function WishRow({
       }
       className={`flex items-center gap-4 rounded-[18px] border p-[18px] sm:gap-10 ${
         onOpen ? "cursor-pointer transition hover:brightness-[0.98]" : ""
-      }`}
+      } ${takenLabel ? "opacity-70" : ""}`}
       style={{ background: theme.bg, borderColor: theme.border }}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -1745,7 +1802,11 @@ function WishRow({
             </span>
           )}
           <div className="min-w-0">
-            <p className="truncate text-[16px] font-medium leading-[1.4] tracking-[-1px] text-black">
+            <p
+              className={`truncate text-[16px] font-medium leading-[1.4] tracking-[-1px] text-black ${
+                takenLabel ? "line-through decoration-[#5b5b5b] decoration-[1.5px]" : ""
+              }`}
+            >
               {item.name}
             </p>
             <div className="flex items-center gap-[3px] text-[12px] leading-[1.4] tracking-[-1px]">
@@ -1786,8 +1847,21 @@ function WishRow({
           <div className="hidden sm:block sm:flex-1" />
         )}
       </div>
-      <ArrowRightIcon className="size-4 shrink-0 text-[#9a9a9a]" />
+      {takenLabel ? (
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-[50px] bg-[#e7f5ea] px-3 py-[6px] text-[12px] font-semibold text-[#1f6b33]">
+          <CheckMarkIcon className="size-[14px]" />
+          {takenLabel}
+        </span>
+      ) : (
+        <ArrowRightIcon className="size-4 shrink-0 text-[#9a9a9a]" />
+      )}
     </div>
+  );
+}
+
+function CheckMarkIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
   );
 }
 

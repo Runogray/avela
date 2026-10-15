@@ -23,6 +23,10 @@ export interface ApiWishlistItem {
   reserver_display: string;
   /** Confirmed cash gifts toward this item (kobo). */
   raised_kobo?: number;
+  /** What's left to fully fund it from confirmed gifts (null = no price). */
+  remaining_kobo?: number | null;
+  /** "reserved" = a guest is buying it, "funded" = confirmed gifts cover it. */
+  availability?: "available" | "reserved" | "funded";
   /** Host view: has confirmed/pending gifts, so it can't be removed. */
   has_contributions?: boolean;
 }
@@ -215,6 +219,9 @@ export function hostEventToFlow(e: HostEvent) {
       anyAmount: false,
       amount: Math.round((w.price_kobo || 0) / 100),
       raised: Math.round((w.raised_kobo || 0) / 100),
+      remaining: w.remaining_kobo == null ? null : Math.round(w.remaining_kobo / 100),
+      // Bought or fully funded: off the list so nobody gifts it twice.
+      taken: w.availability === "reserved" ? ("bought" as const) : w.availability === "funded" ? ("funded" as const) : undefined,
       locked: !!w.has_contributions,
       hideContrib: false,
       hideTotal: false,
@@ -360,6 +367,9 @@ export function publicEventToFlow(e: PublicApiEvent) {
       anyAmount: false,
       amount: Math.round((w.price_kobo || 0) / 100),
       raised: Math.round((w.raised_kobo || 0) / 100),
+      remaining: w.remaining_kobo == null ? null : Math.round(w.remaining_kobo / 100),
+      // Bought or fully funded: off the list so nobody gifts it twice.
+      taken: w.availability === "reserved" ? ("bought" as const) : w.availability === "funded" ? ("funded" as const) : undefined,
       hideContrib: false,
       hideTotal: false,
     })),
