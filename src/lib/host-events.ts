@@ -27,7 +27,7 @@ export interface ApiWishlistItem {
   remaining_kobo?: number | null;
   /** "held" = a guest has it for 10 minutes while they buy it,
    * "bought" = a guest confirmed buying it, "funded" = confirmed gifts cover it. */
-  availability?: "available" | "held" | "bought" | "funded";
+  availability?: "available" | "held" | "pending" | "bought" | "funded";
   /** Host view: who reserved/bought it and when. */
   reserved_by_name?: string;
   reserved_until?: string | null;
@@ -227,9 +227,7 @@ export function hostEventToFlow(e: HostEvent) {
       remaining: w.remaining_kobo == null ? null : Math.round(w.remaining_kobo / 100),
       // Bought or fully funded: off the list so nobody gifts it twice.
       taken:
-        w.availability === "bought" || w.availability === "held" || w.availability === "funded"
-          ? w.availability
-          : undefined,
+        w.availability && w.availability !== "available" ? w.availability : undefined,
       reservedBy: w.reserved_by_name || "",
       purchasedAt: w.purchased_at || null,
       locked: !!w.has_contributions,
@@ -304,6 +302,11 @@ export function confirmBought(itemId: string, holdToken: string) {
 /** Guest cancels their hold before buying. */
 export function releaseHold(itemId: string, holdToken: string) {
   return apiFetch(`/wishlist-items/${itemId}/release-hold/`, { method: "POST", body: { hold_token: holdToken }, auth: false });
+}
+
+/** Host: the gift a guest said they bought has arrived. */
+export function confirmWishlistBought(itemId: string) {
+  return apiFetch<ApiWishlistItem>(`/host/wishlist-items/${itemId}/confirm-bought/`, { method: "POST" });
 }
 
 /** Host puts a bought or held gift back on the list. */
@@ -399,9 +402,7 @@ export function publicEventToFlow(e: PublicApiEvent) {
       remaining: w.remaining_kobo == null ? null : Math.round(w.remaining_kobo / 100),
       // Bought or fully funded: off the list so nobody gifts it twice.
       taken:
-        w.availability === "bought" || w.availability === "held" || w.availability === "funded"
-          ? w.availability
-          : undefined,
+        w.availability && w.availability !== "available" ? w.availability : undefined,
       reservedBy: w.reserved_by_name || "",
       purchasedAt: w.purchased_at || null,
       hideContrib: false,

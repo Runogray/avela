@@ -19,6 +19,7 @@ import {
   confirmBought,
   releaseHold,
   releaseWishlistItem,
+  confirmWishlistBought,
   confirmTransfer,
   declineTransfer,
   type TransferDetails,
@@ -47,7 +48,7 @@ type StoredItem = {
   remaining?: number | null; // left to fully fund (physical gifts with a price)
   // "held": a guest has it for 10 minutes while they buy it; "bought" /
   // "funded": off the list for good.
-  taken?: "held" | "bought" | "funded";
+  taken?: "held" | "pending" | "bought" | "funded"; // "pending": awaiting the host's approval
   reservedBy?: string; // host view: who reserved or bought it
   purchasedAt?: string | null; // host view: when the guest confirmed buying it
   hideContrib?: boolean; // guests don't see per-person contribution amounts
@@ -531,6 +532,11 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
               },
             )
           }
+          onBoughtConfirmed={() => {
+            const mark = (x: StoredItem) => ({ ...x, taken: "bought" as const });
+            setEv((cur) => cur && { ...cur, items: cur.items?.map((x) => (x.id === viewGift.id ? mark(x) : x)) });
+            setViewGift((cur) => cur && mark(cur));
+          }}
           onReleased={() => {
             // Back on the list: update both the list and the open gift screen.
             const clear = (x: StoredItem) => ({ ...x, taken: undefined, reservedBy: "", purchasedAt: null });
@@ -676,8 +682,8 @@ function ContributeModal({
             <p className="max-w-[340px] text-[15px] leading-relaxed text-[#5c5c5c]">
               {buying ? (
                 <>
-                  <b>{item.name}</b> is marked as bought, so nobody else will buy it.
-                  {` ${recipient[0].toUpperCase() + recipient.slice(1)} will be so grateful.`}
+                  <b>{item.name}</b> is off the list, so nobody else will buy it.
+                  {` ${recipient[0].toUpperCase() + recipient.slice(1)} will confirm once it arrives, and they’ll be so grateful.`}
                 </>
               ) : (
                 <>
@@ -1196,6 +1202,7 @@ function GiftContributionsModal({
   occasion,
   onConfirmed,
   onReleased,
+  onBoughtConfirmed,
   onClose,
   onDelete,
 }: {
@@ -1206,6 +1213,7 @@ function GiftContributionsModal({
   occasion?: string;
   onConfirmed: (naira: number) => void;
   onReleased: () => void;
+  onBoughtConfirmed: () => void;
   onClose: () => void;
   onDelete: () => Promise<string | null>;
 }) {
@@ -1345,8 +1353,8 @@ function GiftContributionsModal({
             </div>
           </div>
 
-          {live && (item.taken === "bought" || item.taken === "held") && (
-            <ReservationCard item={item} onReleased={onReleased} />
+          {live && item.purchasedAt !== undefined && (item.taken === "bought" || item.taken === "held" || (item.taken === "pending" && !!item.purchasedAt)) && (
+            <ReservationCard item={item} onReleased={onReleased} onConfirmed={onBoughtConfirmed} />
           )}
 
           {/* stat cards */}
@@ -1436,8 +1444,8 @@ function GiftContributionsModal({
               </div>
             </div>
 
-            {live && (item.taken === "bought" || item.taken === "held") && (
-              <ReservationCard item={item} onReleased={onReleased} />
+            {live && item.purchasedAt !== undefined && (item.taken === "bought" || item.taken === "held" || (item.taken === "pending" && !!item.purchasedAt)) && (
+              <ReservationCard item={item} onReleased={onReleased} onConfirmed={onBoughtConfirmed} />
             )}
 
             {/* stat cards */}
@@ -1533,13 +1541,33 @@ function GiftContributionsModal({
 }
 
 /* Host: who bought (or is holding) a gift, with a way to put it back. */
-function ReservationCard({ item, onReleased }: { item: StoredItem; onReleased: () => void }) {
+function ReservationCard({
+  item,
+  onReleased,
+  onConfirmed,
+}: {
+  item: StoredItem;
+  onReleased: () => void;
+  onConfirmed: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const who = item.reservedBy || "A guest";
   const when = item.purchasedAt
     ? new Date(item.purchasedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
     : "";
+  async function markReceived() {
+    setBusy(true);
+    setError("");
+    try {
+      await confirmWishlistBought(item.id);
+      onConfirmed();
+    } catch (err) {
+      setError(apiErrorMessage(err, "We couldn’t mark this gift as received. Please try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function release() {
     setBusy(true);
     setError("");
@@ -1556,23 +1584,41 @@ function ReservationCard({ item, onReleased }: { item: StoredItem; onReleased: (
     <div className="flex w-full flex-col gap-3 rounded-[18px] border border-[#f0f0f0] bg-white p-[18px] sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
         <p className="text-[16px] font-medium tracking-[-0.6px] text-black">
-          {item.taken === "bought" ? `Bought by ${who}` : `Reserved by ${who}`}
+          {item.taken === "bought"
+            ? `Bought by ${who}`
+            : item.taken === "pending"
+              ? `${who} says they bought it`
+              : `Reserved by ${who}`}
         </p>
         <p className="text-[13px] leading-relaxed tracking-[-0.2px] text-[#636363]">
           {item.taken === "bought"
-            ? `${when ? `Marked as bought on ${when}. ` : ""}It’s off your list so nobody buys it twice. If they didn’t actually buy it, put it back.`
-            : "They have a few minutes to buy it. If they don’t confirm, it goes back on your list on its own."}
+            ? "You confirmed it arrived. It’s off your list for good."
+            : item.taken === "pending"
+              ? `${when ? `On ${when}. ` : ""}Guests see it as Pending. Mark it as received once it arrives, or put it back if it doesn’t.`
+              : "They have a few minutes to buy it. If they don’t confirm, it goes back on your list on its own."}
         </p>
         {error && <p role="alert" className="text-[13px] text-[#a3321f]">{error}</p>}
       </div>
-      <button
-        type="button"
-        onClick={release}
-        disabled={busy}
-        className="h-[40px] shrink-0 rounded-[50px] border border-[#e0dccf] bg-white px-5 text-[13px] font-medium text-[#5c5c5c] transition hover:bg-black/5 disabled:opacity-60"
-      >
-        {busy ? "Saving…" : "Put back on list"}
-      </button>
+      <div className="flex shrink-0 gap-2">
+        <button
+          type="button"
+          onClick={release}
+          disabled={busy}
+          className="h-[40px] rounded-[50px] border border-[#e0dccf] bg-white px-5 text-[13px] font-medium text-[#5c5c5c] transition hover:bg-black/5 disabled:opacity-60"
+        >
+          Put back on list
+        </button>
+        {item.taken === "pending" && (
+          <button
+            type="button"
+            onClick={markReceived}
+            disabled={busy}
+            className="h-[40px] rounded-[50px] bg-teal px-5 text-[13px] font-medium text-teal-ink transition hover:brightness-95 disabled:opacity-60"
+          >
+            {busy ? "Saving…" : "Mark as received"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1944,10 +1990,19 @@ function WishRow({
   // the progress bar is hidden for everyone — host and guests — so the host can
   // clearly see it's hidden.
   // A bought gift has no contributions to show, so its bar is hidden too.
-  const showProgress = !(item.hideContrib || item.hideTotal) && item.taken !== "bought" && item.taken !== "held";
+  // Bought outright (or reserved / awaiting approval of a purchase) has no
+  // contributions to show; cash-covered items keep their bar.
+  const boughtOutright = item.taken === "bought" || item.taken === "held" || (item.taken === "pending" && !(item.raised ?? 0));
+  const showProgress = !(item.hideContrib || item.hideTotal) && !boughtOutright;
   // Bought outright or fully paid for by confirmed gifts: both read "Bought".
   const takenLabel =
-    item.taken === "bought" || item.taken === "funded" ? "Bought" : item.taken === "held" ? "Reserved" : null;
+    item.taken === "bought" || item.taken === "funded"
+      ? "Bought"
+      : item.taken === "held"
+        ? "Reserved"
+        : item.taken === "pending"
+          ? "Pending"
+          : null;
   // Reserved is temporary (a guest has 10 minutes to buy it), so it isn't crossed out.
   const crossedOut = item.taken === "bought" || item.taken === "funded";
   return (
@@ -2034,7 +2089,11 @@ function WishRow({
       {takenLabel ? (
         <span
           className={`inline-flex shrink-0 items-center gap-1 rounded-[50px] px-3 py-[6px] text-[12px] font-semibold ${
-            crossedOut ? "bg-[#e7f5ea] text-[#1f6b33]" : "bg-[#fff3df] text-[#7a5a1e]"
+            crossedOut
+              ? "bg-[#e7f5ea] text-[#1f6b33]"
+              : item.taken === "pending"
+                ? "bg-[#eef1f7] text-[#3d4a63]"
+                : "bg-[#fff3df] text-[#7a5a1e]"
           }`}
         >
           {crossedOut && <CheckMarkIcon className="size-[14px]" />}
