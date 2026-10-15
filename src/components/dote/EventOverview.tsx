@@ -16,6 +16,9 @@ import {
   listTransfers,
   deleteGoal,
   deleteWishlistItem,
+  confirmBought,
+  releaseHold,
+  releaseWishlistItem,
   confirmTransfer,
   declineTransfer,
   type TransferDetails,
@@ -42,7 +45,11 @@ type StoredItem = {
   amount: number;
   raised?: number;
   remaining?: number | null; // left to fully fund (physical gifts with a price)
-  taken?: "bought" | "funded"; // off the list: a guest is buying it / it's fully funded
+  // "held": a guest has it for 10 minutes while they buy it; "bought" /
+  // "funded": off the list for good.
+  taken?: "held" | "bought" | "funded";
+  reservedBy?: string; // host view: who reserved or bought it
+  purchasedAt?: string | null; // host view: when the guest confirmed buying it
   hideContrib?: boolean; // guests don't see per-person contribution amounts
   hideTotal?: boolean; // guests don't see the total raised
 };
@@ -524,6 +531,12 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
               },
             )
           }
+          onReleased={() => {
+            // Back on the list: update both the list and the open gift screen.
+            const clear = (x: StoredItem) => ({ ...x, taken: undefined, reservedBy: "", purchasedAt: null });
+            setEv((cur) => cur && { ...cur, items: cur.items?.map((x) => (x.id === viewGift.id ? clear(x) : x)) });
+            setViewGift((cur) => cur && clear(cur));
+          }}
           onClose={() => setViewGift(null)}
           onDelete={() => deleteGift(viewGift.id)}
         />
@@ -564,6 +577,8 @@ function ContributeModal({
   const [done, setDone] = useState(false);
   // Cash gifts: after Submit the guest sees the host's account to transfer into.
   const [transfer, setTransfer] = useState<TransferDetails | null>(null);
+  // Buy the gift: the 10-minute hold this guest has on the item.
+  const [hold, setHold] = useState<{ token: string; until: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -582,8 +597,8 @@ function ContributeModal({
       setBusy(true);
       setError("");
       try {
-        await reserveWishlistItem(item.id, { guest_name: name.trim(), show_name: true });
-        setDone(true);
+        const h = await reserveWishlistItem(item.id, { guest_name: name.trim(), show_name: true });
+        setHold({ token: h.hold_token, until: new Date(h.reserved_until).getTime() });
         onChanged();
       } catch (err) {
         setError(apiErrorMessage(err, "We couldn’t reserve this gift. Please try again."));
@@ -609,6 +624,30 @@ function ContributeModal({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function boughtIt() {
+    if (!hold || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await confirmBought(item.id, hold.token);
+      setDone(true);
+    } catch (err) {
+      setError(apiErrorMessage(err, "We couldn’t mark this gift as bought. Please try again."));
+    } finally {
+      setBusy(false);
+      onChanged();
+    }
+  }
+
+  async function cancelHold() {
+    if (!hold || busy) return;
+    setBusy(true);
+    await releaseHold(item.id, hold.token).catch(() => {});
+    setBusy(false);
+    onChanged();
+    onClose();
   }
 
   async function sent() {
@@ -637,8 +676,8 @@ function ContributeModal({
             <p className="max-w-[340px] text-[15px] leading-relaxed text-[#5c5c5c]">
               {buying ? (
                 <>
-                  <b>{item.name}</b> is reserved for you — no one else can buy it, and {recipient} will be so
-                  grateful.
+                  <b>{item.name}</b> is marked as bought, so nobody else will buy it.
+                  {` ${recipient[0].toUpperCase() + recipient.slice(1)} will be so grateful.`}
                 </>
               ) : (
                 <>
@@ -647,17 +686,6 @@ function ContributeModal({
                 </>
               )}
             </p>
-            {buying && item.link && (
-              <a
-                href={item.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex h-[48px] w-full items-center justify-center gap-2 rounded-[12px] border border-teal bg-teal/5 text-[14px] font-semibold text-teal transition hover:bg-teal/10"
-              >
-                <StoreIcon className="size-[18px]" />
-                View in store ↗
-              </a>
-            )}
             <button
               type="button"
               onClick={onClose}
@@ -666,6 +694,16 @@ function ContributeModal({
               Done
             </button>
           </div>
+        ) : hold ? (
+          <HoldStep
+            item={item}
+            until={hold.until}
+            busy={busy}
+            error={error}
+            onBought={boughtIt}
+            onCancel={cancelHold}
+            onClose={onClose}
+          />
         ) : transfer ? (
           <TransferStep
             details={transfer}
@@ -720,7 +758,7 @@ function ContributeModal({
             {buying && (
               <div className="flex flex-col gap-3 rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-4 py-4">
                 <p className="text-[14px] leading-relaxed text-[#5c5c5c]">
-                  Reserve this gift so no one else buys the same thing, then get it yourself.
+                  We&rsquo;ll hold this gift for you for 10 minutes so nobody else buys it while you do.
                 </p>
                 {item.link && (
                   <a
@@ -829,7 +867,7 @@ function ContributeModal({
             {!cashUnavailable && (
               <p className="-mt-2 text-center text-[12px] text-[#9a9a9a]">
                 {buying
-                  ? "This locks the gift to you so no one else buys it."
+                  ? "Tap “I’ve bought it” once you’ve ordered it."
                   : "Next, you’ll see the account to send your gift to."}
               </p>
             )}
@@ -868,6 +906,93 @@ function CashGiftAccount({ account, href }: { account: BankAccount | null; href:
         Change
       </a>
     </p>
+  );
+}
+
+/* Buy the gift: the item is held for this guest for 10 minutes. */
+function HoldStep({
+  item,
+  until,
+  busy,
+  error,
+  onBought,
+  onCancel,
+  onClose,
+}: {
+  item: StoredItem;
+  until: number;
+  busy: boolean;
+  error: string;
+  onBought: () => void;
+  onCancel: () => void;
+  onClose: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const left = Math.max(0, Math.ceil((until - now) / 1000));
+  const mm = Math.floor(left / 60);
+  const ss = String(left % 60).padStart(2, "0");
+  const expired = left === 0;
+  return (
+    <>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[17px] font-medium tracking-[-0.3px] text-black">{item.name} is yours for now</p>
+          <p className="text-[13px] text-[#7a7266]">Nobody else can buy it while we hold it for you.</p>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 shrink-0 place-items-center rounded-full text-[#9a9a9a] transition hover:bg-black/5">
+          <CloseIcon className="size-5" />
+        </button>
+      </div>
+
+      <div
+        role="timer"
+        aria-live="off"
+        className={`flex flex-col items-center gap-1 rounded-[14px] px-4 py-5 ${expired ? "bg-[#fffaf0]" : "bg-[#f0f7f9]"}`}
+      >
+        <span className={`text-[40px] font-semibold tabular-nums tracking-[1px] ${expired ? "text-[#7a5a1e]" : "text-teal"}`}>
+          {mm}:{ss}
+        </span>
+        <span className={`text-[13px] ${expired ? "text-[#7a5a1e]" : "text-[#5c5c5c]"}`}>
+          {expired
+            ? "Your hold has ended. If you’ve already bought it, you can still tell us."
+            : "left to buy it before it goes back on the list"}
+        </span>
+      </div>
+
+      {item.link && (
+        <a
+          href={item.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex h-[48px] items-center justify-center gap-2 rounded-[12px] border border-teal bg-teal/5 text-[14px] font-semibold text-teal transition hover:bg-teal/10"
+        >
+          <StoreIcon className="size-[18px]" />
+          View in store ↗
+        </a>
+      )}
+
+      {error && (
+        <p role="alert" className="rounded-[14px] border border-[#f5d0c9] bg-[#fff5f3] px-4 py-3 text-[13px] leading-relaxed text-[#a3321f]">
+          {error}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={onBought}
+        disabled={busy}
+        className="h-[54px] w-full rounded-[50px] bg-teal text-[15px] font-medium tracking-[0.35px] text-teal-ink transition hover:brightness-95 disabled:opacity-70"
+      >
+        {busy ? "Just a moment…" : "I’ve bought it"}
+      </button>
+      <button type="button" onClick={onCancel} disabled={busy} className="-mt-3 text-center text-[13px] font-medium text-[#7a7266] transition hover:text-[#1c1611]">
+        I changed my mind
+      </button>
+    </>
   );
 }
 
@@ -1070,6 +1195,7 @@ function GiftContributionsModal({
   eventTitle,
   occasion,
   onConfirmed,
+  onReleased,
   onClose,
   onDelete,
 }: {
@@ -1079,6 +1205,7 @@ function GiftContributionsModal({
   eventTitle: string;
   occasion?: string;
   onConfirmed: (naira: number) => void;
+  onReleased: () => void;
   onClose: () => void;
   onDelete: () => Promise<string | null>;
 }) {
@@ -1218,6 +1345,10 @@ function GiftContributionsModal({
             </div>
           </div>
 
+          {live && (item.taken === "bought" || item.taken === "held") && (
+            <ReservationCard item={item} onReleased={onReleased} />
+          )}
+
           {/* stat cards */}
           <div className="flex w-full gap-3">
             <StatBox label="Total Contribution Received" naira value={total.toLocaleString()} />
@@ -1304,6 +1435,10 @@ function GiftContributionsModal({
                 </div>
               </div>
             </div>
+
+            {live && (item.taken === "bought" || item.taken === "held") && (
+              <ReservationCard item={item} onReleased={onReleased} />
+            )}
 
             {/* stat cards */}
             <div className="flex gap-8">
@@ -1393,6 +1528,51 @@ function GiftContributionsModal({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* Host: who bought (or is holding) a gift, with a way to put it back. */
+function ReservationCard({ item, onReleased }: { item: StoredItem; onReleased: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const who = item.reservedBy || "A guest";
+  const when = item.purchasedAt
+    ? new Date(item.purchasedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+    : "";
+  async function release() {
+    setBusy(true);
+    setError("");
+    try {
+      await releaseWishlistItem(item.id);
+      onReleased();
+    } catch (err) {
+      setError(apiErrorMessage(err, "We couldn’t put this gift back on the list. Please try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex w-full flex-col gap-3 rounded-[18px] border border-[#f0f0f0] bg-white p-[18px] sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-1">
+        <p className="text-[16px] font-medium tracking-[-0.6px] text-black">
+          {item.taken === "bought" ? `Bought by ${who}` : `Reserved by ${who}`}
+        </p>
+        <p className="text-[13px] leading-relaxed tracking-[-0.2px] text-[#636363]">
+          {item.taken === "bought"
+            ? `${when ? `Marked as bought on ${when}. ` : ""}It’s off your list so nobody buys it twice. If they didn’t actually buy it, put it back.`
+            : "They have a few minutes to buy it. If they don’t confirm, it goes back on your list on its own."}
+        </p>
+        {error && <p role="alert" className="text-[13px] text-[#a3321f]">{error}</p>}
+      </div>
+      <button
+        type="button"
+        onClick={release}
+        disabled={busy}
+        className="h-[40px] shrink-0 rounded-[50px] border border-[#e0dccf] bg-white px-5 text-[13px] font-medium text-[#5c5c5c] transition hover:bg-black/5 disabled:opacity-60"
+      >
+        {busy ? "Saving…" : "Put back on list"}
+      </button>
     </div>
   );
 }
@@ -1764,8 +1944,12 @@ function WishRow({
   // the progress bar is hidden for everyone — host and guests — so the host can
   // clearly see it's hidden.
   // A bought gift has no contributions to show, so its bar is hidden too.
-  const showProgress = !(item.hideContrib || item.hideTotal) && item.taken !== "bought";
-  const takenLabel = item.taken === "bought" ? "Bought" : item.taken === "funded" ? "Fully funded" : null;
+  const showProgress = !(item.hideContrib || item.hideTotal) && item.taken !== "bought" && item.taken !== "held";
+  // Bought outright or fully paid for by confirmed gifts: both read "Bought".
+  const takenLabel =
+    item.taken === "bought" || item.taken === "funded" ? "Bought" : item.taken === "held" ? "Reserved" : null;
+  // Reserved is temporary (a guest has 10 minutes to buy it), so it isn't crossed out.
+  const crossedOut = item.taken === "bought" || item.taken === "funded";
   return (
     <div
       aria-disabled={takenLabel && !onOpen ? true : undefined}
@@ -1784,7 +1968,7 @@ function WishRow({
       }
       className={`flex items-center gap-4 rounded-[18px] border p-[18px] sm:gap-10 ${
         onOpen ? "cursor-pointer transition hover:brightness-[0.98]" : ""
-      } ${takenLabel ? "opacity-70" : ""}`}
+      } ${crossedOut ? "opacity-70" : ""}`}
       style={{ background: theme.bg, borderColor: theme.border }}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -1804,7 +1988,7 @@ function WishRow({
           <div className="min-w-0">
             <p
               className={`truncate text-[16px] font-medium leading-[1.4] tracking-[-1px] text-black ${
-                takenLabel ? "line-through decoration-[#5b5b5b] decoration-[1.5px]" : ""
+                crossedOut ? "line-through decoration-[#5b5b5b] decoration-[1.5px]" : ""
               }`}
             >
               {item.name}
@@ -1848,8 +2032,12 @@ function WishRow({
         )}
       </div>
       {takenLabel ? (
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-[50px] bg-[#e7f5ea] px-3 py-[6px] text-[12px] font-semibold text-[#1f6b33]">
-          <CheckMarkIcon className="size-[14px]" />
+        <span
+          className={`inline-flex shrink-0 items-center gap-1 rounded-[50px] px-3 py-[6px] text-[12px] font-semibold ${
+            crossedOut ? "bg-[#e7f5ea] text-[#1f6b33]" : "bg-[#fff3df] text-[#7a5a1e]"
+          }`}
+        >
+          {crossedOut && <CheckMarkIcon className="size-[14px]" />}
           {takenLabel}
         </span>
       ) : (
