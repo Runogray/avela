@@ -505,6 +505,25 @@ export async function createEventFromFlow(p: FlowPayload): Promise<HostEvent> {
  * (items keep their server id from hydration, so we add/update/delete). */
 export async function updateEventFromFlow(id: string, p: FlowPayload): Promise<HostEvent> {
   const hasPhysical = p.items.some((i) => i.type === "physical");
+  // Saved images come back from the API as links (/api/img/…), and the server
+  // resolves a link sent back to the image it points at. So when the cover and
+  // a gallery photo swap places, add new gallery photos BEFORE changing the
+  // cover (the old cover link must still show the old cover), and delete
+  // photos only AFTER (a photo promoted to cover must still exist).
+  const current = await getHostEvent(id);
+
+  // --- 1. gallery: upload the new photos first ---
+  const want = (p.gallery ?? []).slice(1); // index 0 is the cover
+  const unmatched = [...current.photos].sort((a, b) => a.order - b.order);
+  const plan = want.map((image) => {
+    const i = unmatched.findIndex((ph) => ph.image === image);
+    return { image, photo: i >= 0 ? unmatched.splice(i, 1)[0] : null };
+  });
+  for (let i = 0; i < plan.length; i++) {
+    if (!plan[i].photo) await addEventPhoto(id, plan[i].image, i + 1);
+  }
+
+  // --- 2. the event itself, cover included ---
   await updateHostEvent(id, {
     title: p.title || "Your celebration",
     description: p.description || "",
@@ -518,8 +537,14 @@ export async function updateEventFromFlow(id: string, p: FlowPayload): Promise<H
     accepts_wishlist: hasPhysical,
   });
 
-  // --- sync goals + wishlist items against what's on the server ---
-  const current = await getHostEvent(id);
+  // --- 3. gallery: drop removed photos, fix the order of kept ones ---
+  for (const ph of unmatched) await deleteEventPhoto(ph.id);
+  for (let i = 0; i < plan.length; i++) {
+    const { photo } = plan[i];
+    if (photo && photo.order !== i + 1) await updateEventPhoto(photo.id, i + 1);
+  }
+
+  // --- 4. sync goals + wishlist items against what's on the server ---
   const goalIds = new Set(current.goals.map((g) => g.id));
   const itemIds = new Set(current.wishlist_items.map((w) => w.id));
   const keptGoals = new Set<string>();
@@ -552,23 +577,6 @@ export async function updateEventFromFlow(id: string, p: FlowPayload): Promise<H
   }
   for (const gid of goalIds) if (!keptGoals.has(gid)) await deleteGoal(gid);
   for (const iid of itemIds) if (!keptItems.has(iid)) await deleteWishlistItem(iid);
-
-  // --- sync gallery photos (index 0 of the flow's gallery is the cover) ---
-  // Saved photos come back as the same data URLs, so match by content: keep
-  // and reorder those still wanted, upload new ones, delete the rest.
-  const want = (p.gallery ?? []).slice(1);
-  const unmatched = [...current.photos].sort((a, b) => a.order - b.order);
-  const plan = want.map((image) => {
-    const i = unmatched.findIndex((ph) => ph.image === image);
-    return { image, photo: i >= 0 ? unmatched.splice(i, 1)[0] : null };
-  });
-  for (const ph of unmatched) await deleteEventPhoto(ph.id);
-  for (let i = 0; i < plan.length; i++) {
-    const order = i + 1;
-    const { image, photo } = plan[i];
-    if (!photo) await addEventPhoto(id, image, order);
-    else if (photo.order !== order) await updateEventPhoto(photo.id, order);
-  }
 
   return getHostEvent(id);
 }
