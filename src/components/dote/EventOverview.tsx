@@ -21,6 +21,7 @@ import {
   type TransferDetails,
 } from "@/lib/host-events";
 import { apiErrorMessage } from "@/lib/api";
+import { thankYouFor } from "@/lib/thanks";
 import { getBankAccount, type BankAccount } from "@/lib/wallet";
 
 /* ------------------------------------------------------------------ *
@@ -82,8 +83,6 @@ const DESC_FALLBACK: Record<string, string> = {
   baby:
     "A little miracle is on the way, and we can’t wait to celebrate! Join us for an afternoon of love, laughter, and sweet anticipation as we shower our little bundle of joy with all the good wishes in the world.",
 };
-const THANKS =
-  "We’re overflowing with gratitude. Thank you for your love, your presence, and your generous gift. You help make our celebration everything we dreamed of.";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function fmtDate(iso?: string): string {
@@ -487,7 +486,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
       <section className="flex flex-col items-center gap-14 border-t border-[#8eeaff] bg-[#ecfcff] px-10 pb-[42px] pt-[62px] text-center">
         <div className="flex flex-col items-center gap-[14px]">
           <h2 className="font-italiana text-[28px] tracking-[-0.8px] sm:text-[32px]">Thank you</h2>
-          <p className="max-w-[545px] text-[17px] leading-relaxed sm:text-[20px]">{THANKS}</p>
+          <p className="max-w-[545px] text-[17px] leading-relaxed sm:text-[20px]">{thankYouFor(ev.occasion)}</p>
         </div>
         <p className="font-dote text-[18px] font-extralight tracking-[-0.4px]">{ev.title}</p>
       </section>
@@ -510,6 +509,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
           live={!!ev.slug}
           item={viewGift}
           eventTitle={ev.title}
+          occasion={ev.occasion}
           onConfirmed={(naira) =>
             // A confirmed transfer moves this gift's progress bar right away.
             setEv((cur) =>
@@ -1014,6 +1014,7 @@ function GiftContributionsModal({
   live,
   item,
   eventTitle,
+  occasion,
   onConfirmed,
   onClose,
   onDelete,
@@ -1022,6 +1023,7 @@ function GiftContributionsModal({
   live: boolean; // server-backed event (bank-transfer gifts come from the API)
   item: StoredItem;
   eventTitle: string;
+  occasion?: string;
   onConfirmed: (naira: number) => void;
   onClose: () => void;
   onDelete: () => Promise<string | null>;
@@ -1203,7 +1205,7 @@ function GiftContributionsModal({
           </div>
         </div>
 
-        <ThankYouBand eventTitle={eventTitle} />
+        <ThankYouBand eventTitle={eventTitle} occasion={occasion} />
       </div>
 
       {/* ======================= DESKTOP ======================= */}
@@ -1300,7 +1302,7 @@ function GiftContributionsModal({
           </div>
         </div>
 
-        <ThankYouBand eventTitle={eventTitle} desktop />
+        <ThankYouBand eventTitle={eventTitle} occasion={occasion} desktop />
       </div>
 
       {/* delete confirmation */}
@@ -1445,7 +1447,7 @@ function EmptyContrib() {
   );
 }
 
-function ThankYouBand({ eventTitle, desktop }: { eventTitle: string; desktop?: boolean }) {
+function ThankYouBand({ eventTitle, occasion, desktop }: { eventTitle: string; occasion?: string; desktop?: boolean }) {
   return (
     <section
       className={`mt-auto flex flex-col items-center gap-16 border-t border-[#8eeaff] bg-[#ecfcff] text-center ${
@@ -1455,7 +1457,7 @@ function ThankYouBand({ eventTitle, desktop }: { eventTitle: string; desktop?: b
       <div className="flex flex-col items-center gap-[14px]">
         <h3 className={`font-italiana tracking-[-0.8px] ${desktop ? "text-[32px]" : "text-[24px]"}`}>Thank you</h3>
         <p className={`${desktop ? "max-w-[545px] text-[20px]" : "max-w-[319px] text-[16px]"} leading-relaxed`}>
-          {THANKS}
+          {thankYouFor(occasion)}
         </p>
       </div>
       <p className={`font-dote font-extralight tracking-[-0.4px] ${desktop ? "text-[18px]" : "text-[16px]"}`}>

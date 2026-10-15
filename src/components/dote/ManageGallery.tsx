@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { DoteLogo } from "./Logo";
 import { BackArrow } from "./BackArrow";
 import { getHostEvent, getPublicEvent, hostEventToFlow, publicEventToFlow } from "@/lib/host-events";
+import { thankYouFor } from "@/lib/thanks";
 
 /* ------------------------------------------------------------------ *
  * Dote, Gallery (the celebration's photo gallery; reached from the
@@ -30,8 +31,6 @@ const OCC: Record<string, { cover: string }> = {
   baby: { cover: "linear-gradient(135deg, #FFB2FB 0%, #d4537e 100%)" },
 };
 
-const THANKS =
-  "We’re overflowing with gratitude. Thank you for your love, your presence, and your generous gift. You help make our celebration everything we dreamed of.";
 
 export function ManageGallery({ id, guest = false }: { id: string; guest?: boolean }) {
   const router = useRouter();
@@ -173,7 +172,7 @@ export function ManageGallery({ id, guest = false }: { id: string; guest?: boole
       <section className="flex flex-col items-center gap-10 px-10 pb-12 pt-12 text-center sm:gap-14 sm:pb-16 sm:pt-16">
         <div className="flex flex-col items-center gap-[14px]">
           <h2 className="font-italiana text-[24px] tracking-[-0.8px] sm:text-[32px]">Thank you</h2>
-          <p className="max-w-[545px] text-[16px] leading-relaxed sm:text-[20px]">{THANKS}</p>
+          <p className="max-w-[545px] text-[16px] leading-relaxed sm:text-[20px]">{thankYouFor(ev.occasion)}</p>
         </div>
         <p className="font-dote text-[16px] font-extralight tracking-[-0.4px] sm:text-[18px]">{ev.title}</p>
       </section>
