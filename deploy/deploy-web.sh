@@ -25,5 +25,5 @@ cp deploy/web.Dockerfile "$CTX/Dockerfile"
 
 # The server only packages the finished files into an image (COPY steps, no npm).
 echo "Shipping $TAG to $HOST"
-tar -C "$CTX" -czf - . | ssh "$HOST" "set -e; d=\$(mktemp -d); tar -C \$d -xzf -; docker build -q -t avela-web:$TAG \$d >/dev/null; rm -rf \$d"
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$CTX" -czf - . | ssh "$HOST" "set -e; d=\$(mktemp -d); tar -C \$d -xzf -; docker build -q -t avela-web:$TAG \$d >/dev/null; rm -rf \$d"
 ssh "$HOST" "bash -s -- $TAG" < deploy/swap-web.sh
