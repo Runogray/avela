@@ -38,6 +38,7 @@ import {
   rememberGift,
   savedGiftsFor,
 } from "@/lib/my-gifts";
+import { listHostWishes, sendWellWishes } from "@/lib/wishes";
 
 /* ------------------------------------------------------------------ *
  * Dote, Event Overview (the published celebration page; host reaches
@@ -543,7 +544,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
 
       {/* ===================== SEND WELL WISHES ====================== */}
       {guest && (
-        <WellWishesCard eventId={ev.id} recipient={RECIPIENT[ev.occasion] ?? "the celebrant"} />
+        <WellWishesCard slug={ev.slug} recipient={RECIPIENT[ev.occasion] ?? "the celebrant"} />
       )}
 
       {/* ============== WELL WISHES RECEIVED (host view) ============= */}
@@ -2029,32 +2030,34 @@ function ThankYouBand({ eventTitle, occasion, desktop }: { eventTitle: string; o
   );
 }
 
-function WellWishesCard({ eventId, recipient }: { eventId: string; recipient: string }) {
+function WellWishesCard({ slug, recipient }: { slug?: string; recipient: string }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const valid = name.trim().length > 0 && message.trim().length > 0 && emailOk;
+  const valid = name.trim().length > 0 && message.trim().length > 0 && emailOk && !!slug;
 
-  function submit() {
-    if (!valid) return;
+  // Sent to the host's event, so they read it on their own page.
+  async function submit() {
+    if (!valid || busy) return;
+    setBusy(true);
+    setError("");
     try {
-      const all = JSON.parse(localStorage.getItem("dote.wellwishes") || "[]");
-      all.push({
-        id: Math.random().toString(36).slice(2),
-        eventId,
-        name: name.trim(),
-        email: email.trim(),
+      await sendWellWishes(slug!, {
+        guest_name: name.trim(),
+        guest_email: email.trim(),
         message: message.trim(),
-        createdAt: Date.now(),
       });
-      localStorage.setItem("dote.wellwishes", JSON.stringify(all));
-    } catch {
-      /* storage unavailable, still show the thank-you */
+      setSent(true);
+    } catch (err) {
+      setError(apiErrorMessage(err, "We couldn’t send your well wishes. Please try again."));
+    } finally {
+      setBusy(false);
     }
-    setSent(true);
   }
 
   return (
@@ -2108,7 +2111,7 @@ function WellWishesCard({ eventId, recipient }: { eventId: string; recipient: st
               <WishField label="Your message">
                 <textarea
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={(e) => setMessage(e.target.value.slice(0, 2000))}
                   rows={4}
                   placeholder="Share a warm message…"
                   className="w-full resize-none rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-4 py-3 text-[15px] leading-relaxed text-[#1c1611] outline-none transition placeholder:text-[#cccccc] focus:border-teal"
@@ -2116,13 +2119,18 @@ function WellWishesCard({ eventId, recipient }: { eventId: string; recipient: st
               </WishField>
             </div>
 
+            {error && (
+              <p role="alert" className="rounded-[14px] border border-[#f5d0c9] bg-[#fff5f3] px-4 py-3 text-[13px] leading-relaxed text-[#a3321f]">
+                {error}
+              </p>
+            )}
             <button
               type="button"
               onClick={submit}
-              disabled={!valid}
+              disabled={!valid || busy}
               className="h-[52px] w-full rounded-[50px] text-[15px] font-medium tracking-[0.35px] text-teal-ink transition disabled:cursor-not-allowed disabled:bg-[#d0ebf1] enabled:bg-teal enabled:hover:brightness-95"
             >
-              Send well wishes
+              {busy ? "Sending…" : "Send well wishes"}
             </button>
           </>
         )}
@@ -2131,7 +2139,7 @@ function WellWishesCard({ eventId, recipient }: { eventId: string; recipient: st
   );
 }
 
-type WellWish = { id: string; eventId: string; name: string; email: string; message: string; createdAt: number };
+type WellWish = { id: string; name: string; email: string; message: string; createdAt: number };
 
 function fmtWhen(ts: number): string {
   const d = new Date(ts);
@@ -2146,14 +2154,28 @@ function WellWishesReceived({ eventId }: { eventId: string }) {
   const [loaded, setLoaded] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
+  const [failed, setFailed] = useState(false);
+
   useEffect(() => {
-    try {
-      const all: WellWish[] = JSON.parse(localStorage.getItem("dote.wellwishes") || "[]");
-      setWishes(all.filter((w) => w.eventId === eventId).sort((a, b) => b.createdAt - a.createdAt));
-    } catch {
-      setWishes([]);
-    }
-    setLoaded(true);
+    let alive = true;
+    listHostWishes(eventId)
+      .then((rows) => {
+        if (!alive) return;
+        setWishes(
+          rows.map((w) => ({
+            id: w.id,
+            name: w.guest_name,
+            email: w.guest_email,
+            message: w.message,
+            createdAt: Date.parse(w.created_at) || Date.now(),
+          })),
+        );
+      })
+      .catch(() => alive && setFailed(true))
+      .finally(() => alive && setLoaded(true));
+    return () => {
+      alive = false;
+    };
   }, [eventId]);
 
   if (!loaded) return null;
@@ -2166,13 +2188,15 @@ function WellWishesReceived({ eventId }: { eventId: string }) {
       <div className="flex flex-col items-center gap-[6px] text-center">
         <h2 className="font-italiana text-[28px] tracking-[-0.8px] sm:text-[32px]">Well wishes</h2>
         <p className="text-[14px] text-[#5c5c5c]">
-          {wishes.length > 0
-            ? `${wishes.length} heartfelt ${wishes.length === 1 ? "note" : "notes"} from your guests`
-            : "Notes from your guests will appear here"}
+          {failed
+            ? "We couldn’t load your well wishes. Refresh to try again."
+            : wishes.length > 0
+              ? `${wishes.length} heartfelt ${wishes.length === 1 ? "note" : "notes"} from your guests`
+              : "Notes from your guests will appear here"}
         </p>
       </div>
 
-      {wishes.length === 0 ? (
+      {failed ? null : wishes.length === 0 ? (
         <div className="flex w-full max-w-[520px] flex-col items-center gap-2 rounded-[20px] border border-dashed border-[#e0dccf] bg-white/60 px-6 py-12 text-center">
           <span className="text-[28px]">💌</span>
           <p className="text-[15px] text-[#6e6558]">No well wishes yet. Share your invite link to start receiving them.</p>
@@ -2203,7 +2227,7 @@ function WishCard({ w }: { w: WellWish }) {
   return (
     <article className="flex flex-col gap-4 rounded-[18px] border border-[#ece3d2] bg-white p-5 text-left">
       <QuoteIcon className="size-6 text-teal/60" />
-      <p className="flex-1 text-[15px] leading-relaxed text-[#1c1611]">{w.message}</p>
+      <p className="flex-1 whitespace-pre-line text-[15px] leading-relaxed text-[#1c1611]">{w.message}</p>
       <div className="border-t border-black/[0.06] pt-3">
         <p className="text-[15px] font-medium tracking-[-0.3px] text-black">{w.name}</p>
         <p className="flex flex-wrap items-center gap-x-2 text-[12px] text-[#7a7266]">
