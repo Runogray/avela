@@ -2309,7 +2309,8 @@ function WishRow({
       className={`flex items-center gap-4 rounded-[18px] border p-[18px] sm:gap-10 ${
         onOpen ? "cursor-pointer transition hover:brightness-[0.98]" : ""
       } ${crossedOut ? "opacity-70" : ""}`}
-      style={{ background: theme.bg, borderColor: theme.border }}
+      // A bought gift drops its outline (kept transparent so the card doesn't shift).
+      style={{ background: theme.bg, borderColor: crossedOut ? "transparent" : theme.border }}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         {/* label */}
