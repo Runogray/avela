@@ -288,6 +288,23 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
     };
   }, [guest, slug, reloadKey]);
 
+  // Host notifications open here: ?gift=<item or goal> shows that gift's
+  // contributions (to confirm), #well-wishes scrolls to guests' notes.
+  const giftParam = params.get("gift");
+  useEffect(() => {
+    if (guest || !ev) return;
+    const t = setTimeout(() => {
+      if (giftParam) {
+        const it = (ev.items ?? []).find((x) => x.id === giftParam);
+        if (it) setViewGift(it);
+        window.history.replaceState(null, "", `/events/${id}`);
+      } else if (window.location.hash === "#well-wishes") {
+        document.getElementById("well-wishes")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [guest, ev, giftParam, id]);
+
   if (!loaded) return null;
   if (!ev) {
     return (
@@ -548,7 +565,11 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
       )}
 
       {/* ============== WELL WISHES RECEIVED (host view) ============= */}
-      {!guest && <WellWishesReceived eventId={ev.id} />}
+      {!guest && (
+        <div id="well-wishes" className="scroll-mt-6">
+          <WellWishesReceived eventId={ev.id} />
+        </div>
+      )}
 
       {/* ========================== THANK YOU ======================== */}
       <section className="flex flex-col items-center gap-14 border-t border-[#8eeaff] bg-[#ecfcff] px-10 pb-[42px] pt-[62px] text-center">
@@ -2191,6 +2212,17 @@ function WellWishesReceived({ eventId }: { eventId: string }) {
       alive = false;
     };
   }, [eventId]);
+
+  // Opened from a "New well wishes" notification: bring the notes into view
+  // once they've loaded and the page above has settled.
+  useEffect(() => {
+    if (!loaded || window.location.hash !== "#well-wishes") return;
+    const t = setTimeout(
+      () => document.getElementById("well-wishes")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      150,
+    );
+    return () => clearTimeout(t);
+  }, [loaded]);
 
   if (!loaded) return null;
 

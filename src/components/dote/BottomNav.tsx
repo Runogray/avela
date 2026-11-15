@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cn } from "@/lib/cn";
+import { UnreadDot } from "./NotificationCenter";
 
 /** Dote host-app bottom tab bar (mobile). "New" is the create-event tab. */
 const TABS = [
@@ -20,8 +21,9 @@ export function BottomNav({ active = "new" }: { active?: (typeof TABS)[number]["
             key={t.key}
             href={t.href}
             aria-current={on ? "page" : undefined}
-            className="flex flex-1 flex-col items-center gap-[2px] px-2 pb-4 pt-3"
+            className="relative flex flex-1 flex-col items-center gap-[2px] px-2 pb-4 pt-3"
           >
+            {t.key === "notification" && <UnreadDot className="absolute left-1/2 top-[10px] ml-[8px]" />}
             {on ? (
               // active tab: filled icon tinted teal (mask preserves the bulk shape)
               <span

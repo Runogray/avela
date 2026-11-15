@@ -5,20 +5,16 @@ import { UserAvatar } from "./UserAvatar";
 import { useRouter } from "next/navigation";
 import { BottomNav } from "./BottomNav";
 import { TopBar, Sidebar } from "./EventsHome";
-import { listNotifications, markAllNotificationsRead } from "@/lib/engagement";
+import { BellIcon, NotifRow, useNotifications, type Notif } from "./NotificationCenter";
 
 /* ------------------------------------------------------------------ *
  * Dote, Notifications. No Figma for this screen; designed from the
- * product we have. Surfaces real activity from localStorage:
- *   • contributions to the user's events  (dote.contributions)
- *   • well wishes received                (dote.wellwishes)
- *   • invites the user accepted            (dote.invites)
- *   • a welcome note                       (dote.auth)
- * Grouped by time with per-item read/unread (dote.notifReadAt).
+ * product we have. The feed comes live from the API (NotificationCenter
+ * keeps it fresh and opens each one where it points). Only when the API
+ * can't be reached does it fall back to the local mock stores
+ * (dote.contributions, dote.wellwishes, dote.invites, dote.auth).
  * ------------------------------------------------------------------ */
 
-type Kind = "contribution" | "wish" | "invite" | "wallet" | "system";
-type Notif = { id: string; kind: Kind; title: string; body: string; at: number; read?: boolean };
 
 type StoredItem = { id: string; name: string };
 type StoredEvent = { id: string; title: string; items?: StoredItem[] };
@@ -125,21 +121,6 @@ function buildNotifications(): Notif[] {
   return out.sort((a, b) => b.at - a.at);
 }
 
-function relTime(at: number): string {
-  const diff = Date.now() - at;
-  const m = Math.round(diff / 6e4);
-  if (m < 1) return "Just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.round(h / 24);
-  if (d === 1) return "Yesterday";
-  if (d < 7) return `${d}d ago`;
-  const date = new Date(at);
-  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
-}
-
 function groupOf(at: number): "Today" | "This week" | "Earlier" {
   const d = new Date(at);
   const now = new Date();
@@ -151,46 +132,31 @@ function groupOf(at: number): "Today" | "This week" | "Earlier" {
 
 export function Notifications() {
   const router = useRouter();
-  const [items, setItems] = useState<Notif[]>([]);
-  const [readAt, setReadAt] = useState(0);
+  const { recent, refresh, open, markAllRead: markAllLive } = useNotifications();
+  // Set only when the API can't be reached: the local mock feed instead.
+  const [offline, setOffline] = useState<Notif[] | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    let localReadAt = 0;
-    try {
-      localReadAt = Number(localStorage.getItem("dote.notifReadAt") || "0");
-    } catch {
-      /* ignore */
-    }
-    setReadAt(localReadAt);
-    (async () => {
-      try {
-        const api = await listNotifications();
+    refresh()
+      .catch(() => {
         if (!alive) return;
-        setItems(
-          api.map((n) => ({
-            id: n.id,
-            kind: n.kind as Kind,
-            title: n.title,
-            body: n.body,
-            at: Date.parse(n.created_at) || Date.now(),
-            read: n.read_at != null,
-          })),
-        );
-      } catch {
-        // offline → derive from local mock, read state from the stored ts
-        if (alive)
-          setItems(buildNotifications().map((n) => ({ ...n, read: n.at <= localReadAt })));
-      } finally {
-        if (alive) setLoaded(true);
-      }
-    })();
+        let localReadAt = 0;
+        try {
+          localReadAt = Number(localStorage.getItem("dote.notifReadAt") || "0");
+        } catch {
+          /* ignore */
+        }
+        setOffline(buildNotifications().map((n) => ({ ...n, read: n.at <= localReadAt })));
+      })
+      .finally(() => alive && setLoaded(true));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [refresh]);
 
+  const items = offline ?? recent;
   const unread = useMemo(() => items.filter((n) => !n.read).length, [items]);
 
   const groups = useMemo(() => {
@@ -201,12 +167,10 @@ export function Notifications() {
   }, [items]);
 
   function markAllRead() {
-    const now = Date.now();
-    setReadAt(now);
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
-    markAllNotificationsRead().catch(() => {});
+    if (!offline) return markAllLive();
+    setOffline((prev) => (prev ?? []).map((n) => ({ ...n, read: true })));
     try {
-      localStorage.setItem("dote.notifReadAt", String(now));
+      localStorage.setItem("dote.notifReadAt", String(Date.now()));
     } catch {
       /* ignore */
     }
@@ -223,7 +187,7 @@ export function Notifications() {
               <p className="px-1 text-[12px] font-semibold uppercase tracking-[0.4px] text-[#8a8a8a]">{g.label}</p>
               <div className="flex flex-col gap-[10px]">
                 {g.items.map((n) => (
-                  <NotifRow key={n.id} n={n} unread={!n.read} />
+                  <NotifRow key={n.id} n={n} unread={!n.read} onOpen={offline ? undefined : () => open(n)} />
                 ))}
               </div>
             </div>
@@ -302,39 +266,6 @@ export function Notifications() {
   );
 }
 
-/* ------------------------------- row ----------------------------------- */
-const STYLE: Record<Kind, { bg: string; fg: string; Icon: (p: { className?: string }) => React.ReactElement }> = {
-  contribution: { bg: "#dffcff", fg: "#06aacf", Icon: GiftIcon },
-  wish: { bg: "#ffe3f3", fg: "#e05b9b", Icon: HeartIcon },
-  invite: { bg: "#eafaff", fg: "#529ae2", Icon: MailIcon },
-  wallet: { bg: "#e7f7ec", fg: "#1a9f5a", Icon: WalletIcon },
-  system: { bg: "#fff3e3", fg: "#e8872e", Icon: StarIcon },
-};
-
-function NotifRow({ n, unread }: { n: Notif; unread: boolean }) {
-  const s = STYLE[n.kind];
-  const Icon = s.Icon;
-  return (
-    <div
-      className={`flex items-start gap-3 rounded-[16px] border p-4 transition ${
-        unread ? "border-[#cdeef5] bg-[#f6feff]" : "border-[#eeeeee] bg-white"
-      }`}
-    >
-      <span className="grid size-10 shrink-0 place-items-center rounded-[12px]" style={{ background: s.bg, color: s.fg }}>
-        <Icon className="size-5" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[14px] font-semibold tracking-[-0.1px] text-[#1c1611]">{n.title}</p>
-        <p className="mt-0.5 text-[13px] leading-[19px] text-[#6e6e6e]">{n.body}</p>
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-1.5">
-        <span className="whitespace-nowrap text-[12px] text-[#9a9a9a]">{relTime(n.at)}</span>
-        {unread && <span className="size-2 rounded-full bg-teal" />}
-      </div>
-    </div>
-  );
-}
-
 function Empty() {
   return (
     <div className="flex flex-col items-center gap-2 rounded-[20px] border border-dashed border-[#cddde0] bg-white/60 px-6 py-16 text-center">
@@ -346,54 +277,5 @@ function Empty() {
         Contributions, well wishes and invites will show up here.
       </p>
     </div>
-  );
-}
-
-/* ------------------------------- icons --------------------------------- */
-function GiftIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="8" width="18" height="4" rx="1" />
-      <path d="M12 8v13M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
-      <path d="M12 8S10.5 3.5 8 4.5 9.5 8 12 8Zm0 0s1.5-4.5 4-3.5S14.5 8 12 8Z" />
-    </svg>
-  );
-}
-function HeartIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 21s-7-4.5-9.5-9A5.3 5.3 0 0 1 12 6a5.3 5.3 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9Z" />
-    </svg>
-  );
-}
-function MailIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="5" width="18" height="14" rx="2.5" />
-      <path d="m4 7 8 6 8-6" />
-    </svg>
-  );
-}
-function WalletIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="6" width="18" height="13" rx="3" />
-      <path d="M3 10h18M16 14h2" />
-    </svg>
-  );
-}
-function StarIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 2.5l2.9 5.9 6.6 1-4.7 4.6 1.1 6.5L12 17.9 6.1 20.5l1.1-6.5L2.5 9.4l6.6-1L12 2.5Z" />
-    </svg>
-  );
-}
-function BellIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-    </svg>
   );
 }

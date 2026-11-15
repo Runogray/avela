@@ -7,6 +7,7 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { DoteLogo } from "./Logo";
 import { SidebarLogout } from "./SidebarLogout";
+import { NotificationBell, UnreadDot } from "./NotificationCenter";
 import { BottomNav } from "./BottomNav";
 import { AvatarPicker } from "./AvatarPicker";
 import {
@@ -360,7 +361,8 @@ function ListHeader({ onQuickActions, onSearch }: { onQuickActions: () => void; 
       <Link href="/profile" aria-label="Settings" className="transition hover:opacity-80">
         <UserAvatar className="size-[50px] rounded-full object-cover" />
       </Link>
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-4">
+        <NotificationBell panel={false} />
         <button type="button" aria-label="Quick actions" onClick={onQuickActions}>
           <QuickActionsIcon className="size-6 text-[#1c1611]" />
         </button>
@@ -714,13 +716,16 @@ export function TopBar({ section = "Events" }: { section?: string }) {
       </div>
       <div className="flex flex-1 items-center justify-between pl-7 pr-6">
         <span className="text-[12px] font-medium text-teal">{section}</span>
-        <Link href="/profile" className="flex items-end gap-2 transition hover:opacity-80">
-          <UserAvatar className="size-12 rounded-full object-cover" />
-          <span className="leading-tight">
-            <span className="block text-[14px] text-[#494949]">Hello,</span>
-            <span className="block text-[16px] font-medium text-black">{name || "there"}</span>
-          </span>
-        </Link>
+        <div className="flex items-center gap-5">
+          <NotificationBell />
+          <Link href="/profile" className="flex items-end gap-2 transition hover:opacity-80">
+            <UserAvatar className="size-12 rounded-full object-cover" />
+            <span className="leading-tight">
+              <span className="block text-[14px] text-[#494949]">Hello,</span>
+              <span className="block text-[16px] font-medium text-black">{name || "there"}</span>
+            </span>
+          </Link>
+        </div>
       </div>
     </header>
   );
@@ -773,6 +778,7 @@ export function Sidebar({ active = "events" }: { active?: string }) {
               <img src={item.icon} alt="" className="size-6" />
             )}
             {item.label}
+            {item.key === "notification" && <UnreadDot light={on} />}
           </Link>
           );
         })}

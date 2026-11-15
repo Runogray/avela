@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, isAuthed } from "@/lib/auth";
 import { SIGNED_OUT_EVENT, TOKEN_KEY } from "@/lib/api";
+import { NotificationsProvider } from "./NotificationCenter";
 
 function signedIn() {
   // Same rule as `/`: an API token, or the mock session used when the backend is down.
@@ -54,5 +55,6 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  return <>{children}</>;
+  // Signed-in host pages keep notifications live (badge, toasts).
+  return <NotificationsProvider>{children}</NotificationsProvider>;
 }

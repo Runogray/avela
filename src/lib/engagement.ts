@@ -7,6 +7,8 @@ export interface ApiNotification {
   kind: NotifKind;
   title: string;
   body: string;
+  /** The app path this opens (e.g. /events/<id>?gift=<item>), or "". */
+  link: string;
   created_at: string;
   read_at: string | null;
 }
@@ -34,6 +36,12 @@ export function listNotifications() {
 }
 export function markAllNotificationsRead() {
   return apiFetch("/notifications/read-all/", { method: "POST" });
+}
+export function unreadNotificationCount() {
+  return apiFetch<{ unread: number }>("/notifications/unread_count/");
+}
+export function markNotificationRead(id: string) {
+  return apiFetch<ApiNotification>(`/notifications/${id}/read/`, { method: "POST" });
 }
 
 export function listInvites() {
