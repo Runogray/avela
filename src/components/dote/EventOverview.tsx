@@ -2203,7 +2203,16 @@ function WellWishesReceived({ eventId }: { eventId: string }) {
         </div>
       ) : (
         <>
-          <div className="grid w-full max-w-[940px] items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Columns follow the number of notes, so one or two fill the row. */}
+          <div
+            className={`grid w-full gap-4 ${
+              wishes.length === 1
+                ? "max-w-[560px]"
+                : wishes.length === 2
+                  ? "max-w-[760px] sm:grid-cols-2"
+                  : "max-w-[940px] sm:grid-cols-2 lg:grid-cols-3"
+            }`}
+          >
             {shown.map((w) => (
               <WishCard key={w.id} w={w} />
             ))}
@@ -2225,16 +2234,20 @@ function WellWishesReceived({ eventId }: { eventId: string }) {
 
 function WishCard({ w }: { w: WellWish }) {
   return (
-    <article className="flex flex-col gap-4 rounded-[18px] border border-[#ece3d2] bg-white p-5 text-left">
-      <QuoteIcon className="size-6 text-teal/60" />
-      <p className="flex-1 whitespace-pre-line text-[15px] leading-relaxed text-[#1c1611]">{w.message}</p>
-      <div className="border-t border-black/[0.06] pt-3">
-        <p className="text-[15px] font-medium tracking-[-0.3px] text-black">{w.name}</p>
-        <p className="flex flex-wrap items-center gap-x-2 text-[12px] text-[#7a7266]">
-          <span>{w.email}</span>
-          <span className="text-[#c4bdae]">·</span>
-          <span>{fmtWhen(w.createdAt)}</span>
-        </p>
+    <article className="flex h-full flex-col gap-4 rounded-[18px] border border-[#ece3d2] bg-white p-5 text-left">
+      {/* the guest's words, between an opening and a closing quote */}
+      <div className="flex flex-1 flex-col gap-2">
+        {/* QuoteIcon draws a closing ” mark; turned around it opens the quote. */}
+        <QuoteIcon className="size-6 shrink-0 rotate-180 text-teal/60" />
+        <p className="w-full flex-1 whitespace-pre-line break-words text-[16px] leading-relaxed text-[#1c1611]">{w.message}</p>
+        <QuoteIcon className="size-6 shrink-0 self-end text-teal/60" />
+      </div>
+      <div className="flex items-end justify-between gap-3 border-t border-black/[0.06] pt-3">
+        <div className="min-w-0">
+          <p className="truncate text-[15px] font-medium tracking-[-0.3px] text-black">{w.name}</p>
+          {w.email && <p className="truncate text-[12px] text-[#7a7266]">{w.email}</p>}
+        </div>
+        <p className="shrink-0 text-[12px] text-[#7a7266]">{fmtWhen(w.createdAt)}</p>
       </div>
     </article>
   );
