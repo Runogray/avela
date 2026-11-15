@@ -291,7 +291,7 @@ export function reserveWishlistItem(
   itemId: string,
   body: { guest_name: string; guest_email?: string; show_name: boolean },
 ) {
-  return apiFetch<{ hold_token: string; reserved_until: string }>(`/wishlist-items/${itemId}/reserve/`, {
+  return apiFetch<{ hold_token: string; reserved_until: string; gift_token: string }>(`/wishlist-items/${itemId}/reserve/`, {
     method: "POST",
     body,
     auth: false,
@@ -322,6 +322,8 @@ export function releaseWishlistItem(itemId: string) {
 /** What a guest sees after choosing an amount: the host's account + a reference. */
 export interface TransferDetails {
   gift_id: string;
+  /** Private link to the guest's gift page (/gift/<token>). */
+  gift_token: string;
   reference: string;
   amount_kobo: number;
   bank_name: string;

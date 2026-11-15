@@ -26,9 +26,18 @@ import {
   declineTransfer,
   type TransferDetails,
 } from "@/lib/host-events";
-import { apiErrorMessage } from "@/lib/api";
+import { ApiError, apiErrorMessage } from "@/lib/api";
 import { thankYouFor } from "@/lib/thanks";
 import { getBankAccount, type BankAccount } from "@/lib/wallet";
+import {
+  forgetGift,
+  getGuestGift,
+  giftNews,
+  giftPagePath,
+  isNews,
+  rememberGift,
+  savedGiftsFor,
+} from "@/lib/my-gifts";
 
 /* ------------------------------------------------------------------ *
  * Dote, Event Overview (the published celebration page; host reaches
@@ -244,6 +253,39 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
       setContribTotals({});
     }
   }, [id, contribute, viewGift]);
+
+  // Guest: gifts this device gave on this event, tagged "Your gift" on their
+  // row, with a dot when there's news (received, or a thank-you).
+  const [mine, setMine] = useState<Record<string, { token: string; news: boolean }>>({});
+  const slug = ev?.slug;
+  useEffect(() => {
+    if (!guest || !slug) return;
+    const saved = savedGiftsFor(slug);
+    let alive = true;
+    Promise.all(
+      saved.map(async (s) => {
+        try {
+          const news = giftNews(await getGuestGift(s.token));
+          return { s, news: isNews(news) && news !== s.seen };
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 404) forgetGift(s.token);
+          return null;
+        }
+      }),
+    ).then((rows) => {
+      if (!alive) return;
+      const map: Record<string, { token: string; news: boolean }> = {};
+      for (const r of rows) {
+        if (!r) continue;
+        const cur = map[r.s.targetId];
+        if (!cur || (r.news && !cur.news)) map[r.s.targetId] = { token: r.s.token, news: r.news };
+      }
+      setMine(map);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [guest, slug, reloadKey]);
 
   if (!loaded) return null;
   if (!ev) {
@@ -483,7 +525,16 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
                 item={{ ...it, raised: (it.raised ?? 0) + (ev.slug ? 0 : contribTotals[it.id] ?? 0) }}
                 theme={THEMES[i % THEMES.length]}
                 guest={guest}
-                onOpen={guest ? (it.taken ? undefined : () => setContribute(it)) : () => setViewGift(it)}
+                mine={guest ? mine[it.id] : undefined}
+                onOpen={
+                  guest
+                    ? it.taken
+                      ? mine[it.id]
+                        ? () => router.push(giftPagePath(mine[it.id].token))
+                        : undefined
+                      : () => setContribute(it)
+                    : () => setViewGift(it)
+                }
               />
             ))}
           </div>
@@ -593,7 +644,9 @@ function ContributeModal({
   // Cash gifts: after Submit the guest sees the host's account to transfer into.
   const [transfer, setTransfer] = useState<TransferDetails | null>(null);
   // Buy the gift: the 10-minute hold this guest has on the item.
-  const [hold, setHold] = useState<{ token: string; until: number } | null>(null);
+  const [hold, setHold] = useState<{ token: string; until: number; giftToken: string } | null>(null);
+  // The private link to this guest's gift page, once they've given.
+  const [giftToken, setGiftToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -618,7 +671,7 @@ function ContributeModal({
           guest_email: email.trim() || undefined,
           show_name: true,
         });
-        setHold({ token: h.hold_token, until: new Date(h.reserved_until).getTime() });
+        setHold({ token: h.hold_token, until: new Date(h.reserved_until).getTime(), giftToken: h.gift_token });
         onChanged();
       } catch (err) {
         setError(apiErrorMessage(err, "We couldn’t reserve this gift. Please try again."));
@@ -653,6 +706,10 @@ function ContributeModal({
     setError("");
     try {
       await confirmBought(item.id, hold.token);
+      if (slug && hold.giftToken) {
+        rememberGift({ token: hold.giftToken, slug, targetId: item.id });
+        setGiftToken(hold.giftToken);
+      }
       setDone(true);
     } catch (err) {
       setError(apiErrorMessage(err, "We couldn’t mark this gift as bought. Please try again."));
@@ -676,6 +733,10 @@ function ContributeModal({
     setBusy(true);
     // Best effort: the gift is already recorded; this just nudges the host.
     await markTransferSent(slug!, transfer.gift_id).catch(() => {});
+    if (slug && transfer.gift_token) {
+      rememberGift({ token: transfer.gift_token, slug, targetId: item.id });
+      setGiftToken(transfer.gift_token);
+    }
     setBusy(false);
     setDone(true);
     onChanged();
@@ -707,6 +768,7 @@ function ContributeModal({
                 </>
               )}
             </p>
+            {giftToken && <GiftLinkCard token={giftToken} recipient={recipient} />}
             <button
               type="button"
               onClick={onClose}
@@ -919,6 +981,44 @@ function ContributeModal({
 }
 
 /* Host view: where guests' cash gifts go, or a prompt to add the account. */
+/* After giving: the guest's private gift page, to follow it and read the thank-you. */
+function GiftLinkCard({ token, recipient }: { token: string; recipient: string }) {
+  const [copied, setCopied] = useState(false);
+  const path = giftPagePath(token);
+  async function copy() {
+    const url = `${window.location.origin}${path}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt("Copy your gift link", url);
+    }
+  }
+  return (
+    <div className="mt-1 flex w-full flex-col gap-3 rounded-[14px] bg-[#f0f7f9] px-4 py-4 text-left">
+      <p className="text-[14px] leading-relaxed text-[#1c1611]">
+        {`Follow your gift here, and read ${recipient}’s thank-you when it comes. Save this link to come back to it.`}
+      </p>
+      <div className="flex gap-2">
+        <a
+          href={path}
+          className="flex h-[40px] flex-1 items-center justify-center rounded-[50px] border border-teal bg-white text-[14px] font-medium text-teal transition hover:bg-teal/5"
+        >
+          View your gift
+        </a>
+        <button
+          type="button"
+          onClick={copy}
+          className="h-[40px] rounded-[50px] px-4 text-[14px] font-medium text-teal transition hover:bg-teal/5"
+        >
+          {copied ? "Copied" : "Copy link"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CashGiftAccount({ account, href }: { account: BankAccount | null; href: string }) {
   if (!account) {
     return (
@@ -1443,10 +1543,11 @@ function GiftContributionsModal({
                     {r.status !== "paid" && (
                       <PendingTransfer r={r} busy={acting === r.id} onConfirm={() => confirm(r)} onDecline={() => decline(r)} />
                     )}
-                    {live && r.status === "paid" && r.email && (
+                    {live && r.status === "paid" && (
                       <ThankYou
                         thanked={!!r.thankedAt}
                         guest={r.name}
+                        emailed={!!r.email}
                         send={async (msg) => {
                           await thankTransfer(eventId, r.id, msg);
                           setRows((cur) => cur.map((x) => (x.id === r.id ? { ...x, thankedAt: new Date().toISOString() } : x)));
@@ -1564,10 +1665,11 @@ function GiftContributionsModal({
                     {r.status !== "paid" && (
                       <PendingTransfer r={r} busy={acting === r.id} onConfirm={() => confirm(r)} onDecline={() => decline(r)} />
                     )}
-                    {live && r.status === "paid" && r.email && (
+                    {live && r.status === "paid" && (
                       <ThankYou
                         thanked={!!r.thankedAt}
                         guest={r.name}
+                        emailed={!!r.email}
                         send={async (msg) => {
                           await thankTransfer(eventId, r.id, msg);
                           setRows((cur) => cur.map((x) => (x.id === r.id ? { ...x, thankedAt: new Date().toISOString() } : x)));
@@ -1682,11 +1784,12 @@ function ReservationCard({
               : "They have a few minutes to buy it. If they don’t confirm, it goes back on your list on its own."}
         </p>
         {error && <p role="alert" className="text-[13px] text-[#a3321f]">{error}</p>}
-        {item.taken === "bought" && item.reservedByEmail && (
+        {item.taken === "bought" && (
           <div className="mt-2">
             <ThankYou
               thanked={!!item.thankedAt || thanked}
               guest={who}
+              emailed={!!item.reservedByEmail}
               send={async (msg) => {
                 await thankBuyer(item.id, msg);
                 setThanked(true);
@@ -1735,10 +1838,13 @@ function localContributions(eventId: string, itemId: string): Contribution[] {
 function ThankYou({
   thanked,
   guest,
+  emailed,
   send,
 }: {
   thanked: boolean;
   guest: string;
+  /** The guest left an email; the note always shows on their gift page. */
+  emailed: boolean;
   send: (message: string) => Promise<void>;
 }) {
   const first = (guest || "").trim().split(" ")[0] || "them";
@@ -1779,7 +1885,7 @@ function ThankYou({
   return (
     <div className="flex w-full flex-col gap-2">
       <label className="text-[12px] font-medium text-[#636363]" htmlFor={`thanks-${first}`}>
-        {`Your thank-you to ${first} (we’ll email it)`}
+        {`Your thank-you to ${first} (${emailed ? "we’ll email it, and" : "it"} shows on their gift page)`}
       </label>
       <textarea
         id={`thanks-${first}`}
@@ -2153,11 +2259,14 @@ function WishRow({
   item,
   theme,
   guest,
+  mine,
   onOpen,
 }: {
   item: StoredItem;
   theme: (typeof THEMES)[number];
   guest?: boolean;
+  /** Guest: this device gave toward / bought this item. */
+  mine?: { token: string; news: boolean };
   onOpen?: () => void;
 }) {
   const raised = item.raised ?? 0;
@@ -2262,22 +2371,37 @@ function WishRow({
           <div className="hidden sm:block sm:flex-1" />
         )}
       </div>
-      {takenLabel ? (
-        <span
-          className={`inline-flex shrink-0 items-center gap-1 rounded-[50px] px-3 py-[6px] text-[12px] font-semibold ${
-            crossedOut
-              ? "bg-[#e7f5ea] text-[#1f6b33]"
-              : item.taken === "pending"
-                ? "bg-[#eef1f7] text-[#3d4a63]"
-                : "bg-[#fff3df] text-[#7a5a1e]"
-          }`}
-        >
-          {crossedOut && <CheckMarkIcon className="size-[14px]" />}
-          {takenLabel}
-        </span>
-      ) : (
-        <ArrowRightIcon className="size-4 shrink-0 text-[#9a9a9a]" />
-      )}
+      <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+        {mine && (
+          <a
+            href={giftPagePath(mine.token)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={mine.news ? "Your gift: there’s news" : "Your gift"}
+            className="relative inline-flex items-center rounded-[50px] border border-teal/40 bg-white px-3 py-[5px] text-[12px] font-semibold text-teal transition hover:bg-teal/5"
+          >
+            Your gift
+            {mine.news && (
+              <span className="absolute -right-[2px] -top-[2px] size-[10px] rounded-full border-2 border-white bg-[#e12525]" />
+            )}
+          </a>
+        )}
+        {takenLabel ? (
+          <span
+            className={`inline-flex shrink-0 items-center gap-1 rounded-[50px] px-3 py-[6px] text-[12px] font-semibold ${
+              crossedOut
+                ? "bg-[#e7f5ea] text-[#1f6b33]"
+                : item.taken === "pending"
+                  ? "bg-[#eef1f7] text-[#3d4a63]"
+                  : "bg-[#fff3df] text-[#7a5a1e]"
+            }`}
+          >
+            {crossedOut && <CheckMarkIcon className="size-[14px]" />}
+            {takenLabel}
+          </span>
+        ) : (
+          !mine && <ArrowRightIcon className="size-4 shrink-0 text-[#9a9a9a]" />
+        )}
+      </div>
     </div>
   );
 }
