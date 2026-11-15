@@ -324,7 +324,8 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
 
   const occ = OCC[ev.occasion] ?? OCC.wedding;
   const cover = ev.cover || null;
-  const when = [fmtDate(ev.date), fmtTime(ev.time)].filter(Boolean);
+  // No venue: the day matters, not a time to arrive.
+  const when = [fmtDate(ev.date), ev.venue ? fmtTime(ev.time) : ""].filter(Boolean);
   const swatches = dressSwatches(ev.dress);
   const gallery = (ev.gallery ?? []).slice(0, 4);
   const items = ev.items ?? [];
@@ -465,7 +466,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
         </div>
 
         <div className="flex w-[328px] max-w-full flex-col gap-[30px]">
-          {swatches.length > 0 && (
+          {ev.venue && swatches.length > 0 && (
             <DetailBlock label="Dress code">
               <p className="text-[18px] tracking-[-0.8px]">{ev.dress}</p>
               <div className="flex items-center gap-2">

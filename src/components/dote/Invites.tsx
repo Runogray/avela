@@ -355,7 +355,8 @@ function InviteCard({
   className?: string;
 }) {
   const cover = event.cover || null;
-  const when = [fmtDate(event.date), fmtTime(event.time)].filter(Boolean);
+  // No venue: the day matters, not a time to arrive.
+  const when = [fmtDate(event.date), event.venue ? fmtTime(event.time) : ""].filter(Boolean);
   const tag = OCC_LABEL[event.occasion] || event.category || "Celebration";
   const slug = event.title.replace(/\s+/g, "");
   const hashtag = slug.startsWith("#") ? slug : `#${slug}`;

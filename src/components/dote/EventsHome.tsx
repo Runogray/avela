@@ -500,7 +500,7 @@ function EventCard({
           <div className="flex items-center gap-[6px]">
             <CalendarIcon className="size-5 shrink-0 text-[#212121]" />
             <span>{fmtDate(event.date)}</span>
-            {fmtTime(event.time) && (
+            {event.venue && fmtTime(event.time) && (
               <>
                 <span className="h-[13px] w-px bg-[#c9c9c9]" />
                 <span>{fmtTime(event.time)}</span>

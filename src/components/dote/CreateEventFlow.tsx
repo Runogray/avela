@@ -224,7 +224,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
         }))
       );
       const payload = {
-        occasion, category, title, location, dress, time, date, description,
+        occasion, category, title, location, dress: eventDress, time: eventTime, date, description,
         cover, coverPos, gallery, items: slimItems, publish: true,
       };
 
@@ -251,7 +251,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
         const prev = JSON.parse(localStorage.getItem("dote.events") || "[]");
         const base = {
           title: title || "Your celebration",
-          occasion, category, date, time, venue: location, dress, description,
+          occasion, category, date, time: eventTime, venue: location, dress: eventDress, description,
           cover, gallery, items: slimItems, wishes: items.length,
         };
         if (editMode) {
@@ -269,9 +269,15 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
     })();
   }
 
+  // Without a venue there's nowhere to dress for or arrive at, so the dress
+  // code and time aren't saved or shown (what the host typed is kept while
+  // they edit, in case they add a venue back).
+  const hasVenue = location.trim().length > 0;
+  const eventDress = hasVenue ? dress : "";
+  const eventTime = hasVenue ? time : "";
   const details = { title, category, location, dress, time, date, description };
   const detailSetters = { setTitle, setCategory, setLocation, setDress, setTime, setDate, setDescription };
-  const previewData = { occasion, title, location, dress, time, date, description, photos, items };
+  const previewData = { occasion, title, location, dress: eventDress, time: eventTime, date, description, photos, items };
 
   // Editing: hold paint until the stored event has hydrated the fields.
   if (!hydrated) {
@@ -544,12 +550,20 @@ function DetailsStep({
           <TextInput value={v.location} onChange={set.setLocation} placeholder="Event address" />
         </Field>
 
-        <Field label="Dress code">
-          <TextInput value={v.dress} onChange={set.setDress} placeholder="Black & Blue" />
-        </Field>
+        {v.location.trim() && (
+          <Field label="Dress code">
+            <TextInput value={v.dress} onChange={set.setDress} placeholder="Black & Blue" />
+          </Field>
+        )}
 
         <Field label="Date">
-          <DateField time={v.time} date={v.date} onTime={set.setTime} onDate={set.setDate} />
+          <DateField
+            time={v.time}
+            date={v.date}
+            onTime={set.setTime}
+            onDate={set.setDate}
+            withTime={!!v.location.trim()}
+          />
         </Field>
 
         <Field label="Description" optional>
@@ -606,18 +620,25 @@ function DateField({
   date,
   onTime,
   onDate,
+  withTime = true,
 }: {
   time: string;
   date: string;
   onTime: (s: string) => void;
   onDate: (s: string) => void;
+  /** Time only matters when there's a venue to arrive at. */
+  withTime?: boolean;
 }) {
   const dateRef = useRef<HTMLInputElement | null>(null);
   return (
     <div className="flex h-[64px] w-full items-center justify-between gap-2 rounded-[16px] border border-[#e8f1f3] bg-white px-4">
       <div className="flex min-w-0 items-center gap-3">
-        <TimePicker value={time} onChange={onTime} />
-        <span className="h-[22px] w-px shrink-0 bg-[#e8e8e8]" />
+        {withTime && (
+          <>
+            <TimePicker value={time} onChange={onTime} />
+            <span className="h-[22px] w-px shrink-0 bg-[#e8e8e8]" />
+          </>
+        )}
         <input
           ref={dateRef}
           type="date"
@@ -1833,11 +1854,19 @@ function DesktopDetails({
         <Field label="Venue" optional>
           <TextInput value={v.location} onChange={set.setLocation} placeholder="Event address" />
         </Field>
-        <Field label="Dress code">
-          <TextInput value={v.dress} onChange={set.setDress} placeholder="Black & Blue" />
-        </Field>
+        {v.location.trim() && (
+          <Field label="Dress code">
+            <TextInput value={v.dress} onChange={set.setDress} placeholder="Black & Blue" />
+          </Field>
+        )}
         <Field label="Date">
-          <DateField time={v.time} date={v.date} onTime={set.setTime} onDate={set.setDate} />
+          <DateField
+            time={v.time}
+            date={v.date}
+            onTime={set.setTime}
+            onDate={set.setDate}
+            withTime={!!v.location.trim()}
+          />
         </Field>
         <Field label="Description" optional>
           <TextInput value={v.description} onChange={set.setDescription} placeholder="Event description" />
