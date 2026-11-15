@@ -2030,6 +2030,10 @@ function ThankYouBand({ eventTitle, occasion, desktop }: { eventTitle: string; o
   );
 }
 
+// Longest well wish: about six lines on the narrowest card (three across on
+// desktop), so notes fill the card without towering over the others.
+const WISH_MAX = 220;
+
 function WellWishesCard({ slug, recipient }: { slug?: string; recipient: string }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -2111,11 +2115,21 @@ function WellWishesCard({ slug, recipient }: { slug?: string; recipient: string 
               <WishField label="Your message">
                 <textarea
                   value={message}
-                  onChange={(e) => setMessage(e.target.value.slice(0, 2000))}
+                  onChange={(e) => setMessage(e.target.value.slice(0, WISH_MAX))}
+                  maxLength={WISH_MAX}
                   rows={4}
                   placeholder="Share a warm message…"
+                  aria-describedby="wish-count"
                   className="w-full resize-none rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-4 py-3 text-[15px] leading-relaxed text-[#1c1611] outline-none transition placeholder:text-[#cccccc] focus:border-teal"
                 />
+                <span
+                  id="wish-count"
+                  className={`self-end text-[12px] tabular-nums ${
+                    message.length >= WISH_MAX ? "text-[#a3321f]" : "text-[#7a7266]"
+                  }`}
+                >
+                  {`${message.length} / ${WISH_MAX}`}
+                </span>
               </WishField>
             </div>
 
