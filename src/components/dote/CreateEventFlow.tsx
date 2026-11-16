@@ -104,6 +104,9 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
   const [time, setTime] = useState("");
   const [date, setDate] = useState("");
   const [description, setDescription] = useState("");
+  // RSVP (asked only when there's a venue): on by default, up to 4 per reply.
+  const [rsvpEnabled, setRsvpEnabled] = useState(true);
+  const [rsvpPartyMax, setRsvpPartyMax] = useState(4);
 
   // step 2
   const [photos, setPhotos] = useState<string[]>([]);
@@ -166,6 +169,8 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
         setTime(f.time);
         setDate(f.date);
         setDescription(f.description);
+        setRsvpEnabled(f.rsvpEnabled);
+        setRsvpPartyMax(f.rsvpPartyMax);
         setPhotos(f.gallery);
         setCoverFocus({ src: f.gallery[0] ?? "", pos: f.coverPos ?? "" });
         setItems(f.items as WishItem[]);
@@ -228,6 +233,7 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
       const payload = {
         occasion, category, title, location, dress: eventDress, time: eventTime, date, description,
         cover, coverPos, gallery, items: slimItems, publish: true,
+        rsvpEnabled, rsvpPartyMax,
       };
 
       // --- live API first ---
@@ -277,8 +283,10 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
   const hasVenue = location.trim().length > 0;
   const eventDress = hasVenue ? dress : "";
   const eventTime = hasVenue ? time : "";
-  const details = { title, category, location, dress, time, date, description };
-  const detailSetters = { setTitle, setCategory, setLocation, setDress, setTime, setDate, setDescription };
+  const details = { title, category, location, dress, time, date, description, rsvpEnabled, rsvpPartyMax };
+  const detailSetters = {
+    setTitle, setCategory, setLocation, setDress, setTime, setDate, setDescription, setRsvpEnabled, setRsvpPartyMax,
+  };
   const previewData = { occasion, title, location, dress: eventDress, time: eventTime, date, description, photos, items };
 
   // Editing: hold paint until the stored event has hydrated the fields.
@@ -311,8 +319,8 @@ export function CreateEventFlow({ editId }: { editId?: string } = {}) {
         {step === "details" && (
           <DetailsStep
             occasion={occasion}
-            v={{ title, category, location, dress, time, date, description }}
-            set={{ setTitle, setCategory, setLocation, setDress, setTime, setDate, setDescription }}
+            v={details}
+            set={detailSetters}
             onContinue={next}
           />
         )}
@@ -518,6 +526,8 @@ function DetailsStep({
     time: string;
     date: string;
     description: string;
+    rsvpEnabled: boolean;
+    rsvpPartyMax: number;
   };
   set: {
     setTitle: (s: string) => void;
@@ -527,6 +537,8 @@ function DetailsStep({
     setTime: (s: string) => void;
     setDate: (s: string) => void;
     setDescription: (s: string) => void;
+    setRsvpEnabled: (b: boolean) => void;
+    setRsvpPartyMax: (n: number) => void;
   };
   onContinue: () => void;
 }) {
@@ -557,6 +569,8 @@ function DetailsStep({
             <TextInput value={v.dress} onChange={set.setDress} placeholder="Black & Blue" />
           </Field>
         )}
+
+        {v.location.trim() && <RsvpFields v={v} set={set} />}
 
         <Field label="Date">
           <DateField
@@ -1636,6 +1650,43 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// RSVP options for an event with a venue: ask guests if they're attending,
+// and how many people one reply may bring (the guest included).
+const PARTY_OPTIONS = Array.from({ length: 10 }, (_, i) => (i === 0 ? "1 person" : `${i + 1} people`));
+
+function RsvpFields({
+  v,
+  set,
+}: {
+  v: { rsvpEnabled: boolean; rsvpPartyMax: number };
+  set: { setRsvpEnabled: (b: boolean) => void; setRsvpPartyMax: (n: number) => void };
+}) {
+  return (
+    <>
+      <Field label="RSVP">
+        <div className="rounded-[16px] border border-[#e8f1f3] bg-white px-4 py-4">
+          <ToggleRow
+            label="Ask guests if they’re attending"
+            sub="They answer Yes, Maybe or No and say how many are coming."
+            on={v.rsvpEnabled}
+            onChange={set.setRsvpEnabled}
+          />
+        </div>
+      </Field>
+      {v.rsvpEnabled && (
+        <Field label="Most people per reply">
+          <SelectInput
+            value={PARTY_OPTIONS[v.rsvpPartyMax - 1] ?? ""}
+            onChange={(s) => set.setRsvpPartyMax(PARTY_OPTIONS.indexOf(s) + 1)}
+            placeholder="Choose"
+            options={PARTY_OPTIONS}
+          />
+        </Field>
+      )}
+    </>
+  );
+}
+
 function ToggleRow({
   label,
   sub,
@@ -1842,6 +1893,8 @@ function DesktopDetails({
     time: string;
     date: string;
     description: string;
+    rsvpEnabled: boolean;
+    rsvpPartyMax: number;
   };
   set: {
     setTitle: (s: string) => void;
@@ -1851,6 +1904,8 @@ function DesktopDetails({
     setTime: (s: string) => void;
     setDate: (s: string) => void;
     setDescription: (s: string) => void;
+    setRsvpEnabled: (b: boolean) => void;
+    setRsvpPartyMax: (n: number) => void;
   };
   onContinue: () => void;
 }) {
@@ -1877,6 +1932,8 @@ function DesktopDetails({
             <TextInput value={v.dress} onChange={set.setDress} placeholder="Black & Blue" />
           </Field>
         )}
+
+        {v.location.trim() && <RsvpFields v={v} set={set} />}
         <Field label="Date">
           <DateField
             time={v.time}

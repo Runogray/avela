@@ -24,9 +24,14 @@ import {
   thankBuyer,
   confirmTransfer,
   declineTransfer,
+  sendRsvp,
+  listHostRsvps,
+  type HostRsvp,
+  type RsvpStatus,
   type TransferDetails,
 } from "@/lib/host-events";
 import { ApiError, apiErrorMessage } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { thankYouFor } from "@/lib/thanks";
 import { getBankAccount, type BankAccount } from "@/lib/wallet";
 import {
@@ -92,6 +97,8 @@ type StoredEvent = {
   gallery?: string[];
   items?: StoredItem[];
   acceptsTransfers?: boolean; // host added a bank account (guest view)
+  rsvpEnabled?: boolean; // guests say if they're attending (only with a venue)
+  rsvpPartyMax?: number; // most people per reply, the guest included
   coverPos?: string; // cover focus point (object-position)
 };
 
@@ -516,6 +523,20 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
           )}
         </div>
       </section>
+
+      {/* ============================ RSVP ============================ */}
+      {/* Only events with a venue ask; the host can switch it off. */}
+      {ev.venue && ev.slug && ev.rsvpEnabled !== false &&
+        (guest ? (
+          <RsvpCard
+            slug={ev.slug}
+            occasion={ev.occasion}
+            recipient={RECIPIENT[ev.occasion] ?? "the celebrant"}
+            partyMax={ev.rsvpPartyMax ?? 4}
+          />
+        ) : (
+          <RsvpSummary eventId={ev.id} />
+        ))}
 
       {/* ========================== GALLERY ========================== */}
       {gallery.length > 0 && (
@@ -2397,6 +2418,322 @@ function QuoteIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M7.5 6C5.57 6 4 7.57 4 9.5c0 1.93 1.57 3.5 3.5 3.5.28 0 .55-.03.81-.1-.36 1.4-1.52 2.5-2.96 2.84a.75.75 0 0 0 .3 1.47c2.86-.58 5.05-3.12 5.05-6.18V9.5C10.7 7.57 9.43 6 7.5 6Zm9 0C14.57 6 13 7.57 13 9.5c0 1.93 1.57 3.5 3.5 3.5.28 0 .55-.03.81-.1-.36 1.4-1.52 2.5-2.96 2.84a.75.75 0 0 0 .3 1.47c2.86-.58 5.05-3.12 5.05-6.18V9.5C19.7 7.57 18.43 6 16.5 6Z" />
     </svg>
+  );
+}
+
+/* ------------------------------- RSVP ---------------------------------- */
+
+const RSVP_KEY = "avela.rsvps";
+type SavedRsvp = { token: string; status: RsvpStatus; party: number; name: string };
+
+function readSavedRsvp(slug: string): SavedRsvp | null {
+  try {
+    return JSON.parse(localStorage.getItem(RSVP_KEY) || "{}")[slug] ?? null;
+  } catch {
+    return null;
+  }
+}
+function saveRsvp(slug: string, r: SavedRsvp) {
+  try {
+    const all = JSON.parse(localStorage.getItem(RSVP_KEY) || "{}");
+    all[slug] = r;
+    localStorage.setItem(RSVP_KEY, JSON.stringify(all));
+  } catch {
+    /* storage unavailable: the reply is still saved on the server */
+  }
+}
+
+const RSVP_CHOICES: { key: RsvpStatus; label: string }[] = [
+  { key: "yes", label: "Yes" },
+  { key: "maybe", label: "Maybe" },
+  { key: "no", label: "No" },
+];
+
+function partyLabel(n: number) {
+  return n === 1 ? "1 person" : `${n} people`;
+}
+
+/** Guest: "Will you be attending?" Remembers the reply on this device so the
+ *  guest sees it next time and can change it. */
+function RsvpCard({
+  slug,
+  occasion,
+  recipient,
+  partyMax,
+}: {
+  slug: string;
+  occasion?: string;
+  recipient: string;
+  partyMax: number;
+}) {
+  const farewell = occasion === "farewell";
+  const [saved, setSaved] = useState<SavedRsvp | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [status, setStatus] = useState<RsvpStatus | null>(null);
+  const [name, setName] = useState("");
+  const [party, setParty] = useState(1);
+  const [contact, setContact] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const r = readSavedRsvp(slug);
+      if (r) {
+        setSaved(r);
+        setName(r.name);
+        setStatus(r.status);
+        setParty(r.party);
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, [slug]);
+
+  const isEmail = contact.includes("@");
+  const contactBad = isEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.trim());
+  const coming = status === "yes" || status === "maybe";
+  const valid = !!status && name.trim().length > 0 && !contactBad;
+
+  async function submit() {
+    if (!valid || busy || !status) return;
+    setBusy(true);
+    setError("");
+    try {
+      const c = contact.trim();
+      const res = await sendRsvp(slug, {
+        guest_name: name.trim(),
+        status,
+        party_size: coming ? party : 1,
+        guest_email: isEmail ? c : undefined,
+        guest_phone: !isEmail && c ? c : undefined,
+        token: saved?.token,
+      });
+      const r = { token: res.token, status: res.status, party: res.party_size, name: res.guest_name };
+      saveRsvp(slug, r);
+      setSaved(r);
+      setEditing(false);
+    } catch (err) {
+      setError(apiErrorMessage(err, "We couldn’t send your reply. Please try again."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const title = farewell ? "Will you be joining us?" : "Will you be attending?";
+  const showForm = !saved || editing;
+
+  return (
+    <section className="flex flex-col items-center px-6 pb-4 pt-2">
+      <div className="flex w-full max-w-[520px] flex-col gap-5 rounded-[24px] border border-[#e6e2d6] bg-white p-6 shadow-[0_18px_40px_-24px_rgba(0,0,0,0.3)] sm:p-8">
+        {!showForm && saved ? (
+          <div className="flex flex-col items-center gap-2 py-2 text-center">
+            <h3 className="font-italiana text-[24px] tracking-[-0.8px]">
+              {saved.status === "yes"
+                ? farewell
+                  ? "You’ll be joining us"
+                  : "You’re coming!"
+                : saved.status === "maybe"
+                  ? "You might come"
+                  : "You can’t make it"}
+            </h3>
+            <p className="text-[15px] leading-relaxed text-[#5c5c5c]">
+              {saved.status === "no"
+                ? `Thanks for letting ${recipient} know, ${saved.name.split(" ")[0]}.`
+                : `${saved.name.split(" ")[0]}, we’ve told ${recipient}: ${partyLabel(saved.party)}.`}
+            </p>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="mt-1 text-[14px] font-medium text-teal transition hover:underline"
+            >
+              Change your reply
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col gap-1 text-center">
+              <h3 className="font-italiana text-[26px] tracking-[-0.8px]">{title}</h3>
+              <p className="text-[14px] text-[#5c5c5c]">{`Let ${recipient} know, so they can plan.`}</p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label={title}>
+              {RSVP_CHOICES.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={status === c.key}
+                  onClick={() => setStatus(c.key)}
+                  className={cn(
+                    "h-[48px] rounded-[50px] border text-[15px] font-medium transition",
+                    status === c.key
+                      ? "border-teal bg-teal text-teal-ink"
+                      : "border-[#e8f1f3] bg-[#fbfbfb] text-[#1c1611] hover:border-teal/50"
+                  )}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <WishField label="Your name">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Ada Obi"
+                  className="h-[52px] w-full rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-4 text-[15px] text-[#1c1611] outline-none transition placeholder:text-[#cccccc] focus:border-teal"
+                />
+              </WishField>
+              {coming && partyMax > 1 && (
+                <WishField label="How many people, including you?">
+                  <div className="flex h-[52px] items-center justify-between rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-2">
+                    <button
+                      type="button"
+                      aria-label="One fewer"
+                      disabled={party <= 1}
+                      onClick={() => setParty((n) => Math.max(1, n - 1))}
+                      className="grid size-9 place-items-center rounded-full text-[20px] text-teal transition hover:bg-teal/10 disabled:text-[#cccccc]"
+                    >
+                      −
+                    </button>
+                    <span className="text-[15px] font-medium text-[#1c1611]">{partyLabel(party)}</span>
+                    <button
+                      type="button"
+                      aria-label="One more"
+                      disabled={party >= partyMax}
+                      onClick={() => setParty((n) => Math.min(partyMax, n + 1))}
+                      className="grid size-9 place-items-center rounded-full text-[20px] text-teal transition hover:bg-teal/10 disabled:text-[#cccccc]"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <span className="text-[12px] text-[#7a7266]">{`Up to ${partyLabel(partyMax)} per reply.`}</span>
+                </WishField>
+              )}
+              <WishField label="Email or phone (optional)">
+                <input
+                  value={contact}
+                  onChange={(e) => setContact(e.target.value)}
+                  placeholder="For any updates about the day"
+                  aria-invalid={contactBad || undefined}
+                  className="h-[52px] w-full rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-4 text-[15px] text-[#1c1611] outline-none transition placeholder:text-[#cccccc] focus:border-teal"
+                />
+                {contactBad && <span className="text-[12px] text-[#a3321f]">That email doesn’t look right.</span>}
+              </WishField>
+            </div>
+
+            {error && (
+              <p role="alert" className="rounded-[14px] border border-[#f5d0c9] bg-[#fff5f3] px-4 py-3 text-[13px] leading-relaxed text-[#a3321f]">
+                {error}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!valid || busy}
+              className="h-[52px] w-full rounded-[50px] text-[15px] font-medium tracking-[0.35px] text-teal-ink transition disabled:cursor-not-allowed disabled:bg-[#d0ebf1] enabled:bg-teal enabled:hover:brightness-95"
+            >
+              {busy ? "Sending…" : saved ? "Update reply" : "Send reply"}
+            </button>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+const RSVP_PREVIEW = 6;
+
+/** Host: who's coming, with the headcount first. */
+function RsvpSummary({ eventId }: { eventId: string }) {
+  const [rows, setRows] = useState<HostRsvp[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    listHostRsvps(eventId)
+      .then((r) => alive && setRows(r))
+      .catch(() => alive && setFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, [eventId]);
+
+  if (failed) return null;
+  if (!rows) return null;
+
+  const yes = rows.filter((r) => r.status === "yes");
+  const maybe = rows.filter((r) => r.status === "maybe");
+  const no = rows.filter((r) => r.status === "no");
+  const people = (list: HostRsvp[]) => list.reduce((n, r) => n + (r.party_size || 1), 0);
+  const attending = people(yes);
+  const shown = expanded ? rows : rows.slice(0, RSVP_PREVIEW);
+
+  return (
+    <section className="flex flex-col items-center gap-5 px-6 pb-10 pt-2">
+      <div className="flex w-full max-w-[720px] flex-col gap-5 rounded-[24px] border border-[#e6e2d6] bg-white p-6 sm:p-8">
+        <div className="flex flex-col gap-1">
+          <p className="text-[13px] font-medium uppercase tracking-[0.4px] text-[#7a7266]">Guest list</p>
+          <p className="text-[28px] font-medium tracking-[-0.8px] text-[#1c1611] tabular-nums">
+            {`${partyLabel(attending)} attending`}
+          </p>
+          <p className="text-[14px] text-[#5c5c5c]">
+            {rows.length === 0
+              ? "No replies yet. Share your invite link and replies will show up here."
+              : [
+                  `${rows.length} ${rows.length === 1 ? "reply" : "replies"}`,
+                  maybe.length ? `${maybe.length} maybe (${partyLabel(people(maybe))})` : "",
+                  no.length ? `${no.length} can’t make it` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+          </p>
+        </div>
+
+        {rows.length > 0 && (
+          <ul className="flex flex-col divide-y divide-[#f0f0f0]">
+            {shown.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar name={r.guest_name} />
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-medium text-[#1c1611]">{r.guest_name}</p>
+                    <p className="truncate text-[12px] text-[#7a7266]">
+                      {[r.status === "no" ? "" : partyLabel(r.party_size), r.guest_email || r.guest_phone]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-[50px] px-3 py-[5px] text-[12px] font-semibold",
+                    r.status === "yes"
+                      ? "bg-[#e7f5ea] text-[#1f6b33]"
+                      : r.status === "maybe"
+                        ? "bg-[#fff3df] text-[#7a5a1e]"
+                        : "bg-[#f3f3f3] text-[#5c5c5c]"
+                  )}
+                >
+                  {r.status === "yes" ? "Attending" : r.status === "maybe" ? "Maybe" : "Can’t make it"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {rows.length > RSVP_PREVIEW && (
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            className="self-center rounded-[50px] border border-teal px-[28px] py-[10px] text-[14px] font-medium text-teal transition hover:bg-teal/5"
+          >
+            {expanded ? "Show less" : `Show all ${rows.length} replies`}
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 

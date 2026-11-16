@@ -67,6 +67,10 @@ export interface HostEvent {
   accepts_money: boolean;
   accepts_wishlist: boolean;
   accepts_wishes: boolean;
+  /** Guests say if they're attending (asked only when there's a venue). */
+  rsvp_enabled: boolean;
+  /** Most people one reply can bring, the guest included. */
+  rsvp_party_max: number;
   is_published: boolean;
   created_at: string;
   wishlist_items: ApiWishlistItem[];
@@ -151,6 +155,10 @@ type EventWrite = Partial<{
   accepts_money: boolean;
   accepts_wishlist: boolean;
   accepts_wishes: boolean;
+  /** Guests say if they're attending (asked only when there's a venue). */
+  rsvp_enabled: boolean;
+  /** Most people one reply can bring, the guest included. */
+  rsvp_party_max: number;
 }>;
 
 export function createHostEvent(body: EventWrite) {
@@ -246,6 +254,8 @@ export function hostEventToFlow(e: HostEvent) {
     title: e.title,
     venue: e.venue,
     dress: e.dress_code,
+    rsvpEnabled: e.rsvp_enabled ?? true,
+    rsvpPartyMax: e.rsvp_party_max ?? 4,
     date: isoToDate(e.starts_at),
     time: isoToTime(e.starts_at),
     description: e.description,
@@ -275,6 +285,10 @@ export interface PublicApiEvent {
   accepts_money: boolean;
   accepts_wishlist: boolean;
   accepts_wishes: boolean;
+  /** Guests say if they're attending (asked only when there's a venue). */
+  rsvp_enabled: boolean;
+  /** Most people one reply can bring, the guest included. */
+  rsvp_party_max: number;
   wishlist_items: ApiWishlistItem[];
   goals: ApiGoal[];
   gallery: string[];
@@ -439,6 +453,8 @@ export function publicEventToFlow(e: PublicApiEvent) {
     title: e.title,
     venue: e.venue,
     dress: e.dress_code,
+    rsvpEnabled: e.rsvp_enabled ?? true,
+    rsvpPartyMax: e.rsvp_party_max ?? 4,
     date: isoToDate(e.starts_at),
     time: isoToTime(e.starts_at),
     description: e.description,
@@ -479,6 +495,8 @@ export type FlowPayload = {
   gallery?: string[]; // extra photo data URLs (beyond the cover)
   items: FlowItem[];
   publish?: boolean;
+  rsvpEnabled?: boolean;
+  rsvpPartyMax?: number;
 };
 
 /** Create an event from the multi-step flow: event → goals/items → publish. */
@@ -494,6 +512,8 @@ export async function createEventFromFlow(p: FlowPayload): Promise<HostEvent> {
     starts_at: dateTimeToIso(p.date, p.time),
     venue: p.location || "",
     dress_code: p.dress || "",
+    rsvp_enabled: p.rsvpEnabled ?? true,
+    rsvp_party_max: p.rsvpPartyMax ?? 4,
     accepts_wishlist: hasPhysical,
   });
 
@@ -559,6 +579,8 @@ export async function updateEventFromFlow(id: string, p: FlowPayload): Promise<H
     starts_at: dateTimeToIso(p.date, p.time),
     venue: p.location || "",
     dress_code: p.dress || "",
+    rsvp_enabled: p.rsvpEnabled ?? true,
+    rsvp_party_max: p.rsvpPartyMax ?? 4,
     accepts_wishlist: hasPhysical,
   });
 
@@ -604,4 +626,41 @@ export async function updateEventFromFlow(id: string, p: FlowPayload): Promise<H
   for (const iid of itemIds) if (!keptItems.has(iid)) await deleteWishlistItem(iid);
 
   return getHostEvent(id);
+}
+
+/* ---------------------------------- RSVP ---------------------------------- */
+export type RsvpStatus = "yes" | "maybe" | "no";
+
+export interface RsvpReply {
+  id: string;
+  guest_name: string;
+  status: RsvpStatus;
+  party_size: number;
+  /** Keep this to change the reply later from the same device. */
+  token: string;
+}
+
+/** Guest: say whether you're attending. Pass `token` to change an earlier reply. */
+export function sendRsvp(
+  slug: string,
+  body: { guest_name: string; status: RsvpStatus; party_size: number; guest_email?: string; guest_phone?: string; token?: string },
+) {
+  return apiFetch<RsvpReply>(`/events/${slug}/rsvp/`, { method: "POST", body, auth: false });
+}
+
+export interface HostRsvp {
+  id: string;
+  guest_name: string;
+  status: RsvpStatus;
+  party_size: number;
+  guest_email: string;
+  guest_phone: string;
+  table_number: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Host: every reply for this event, newest first. */
+export function listHostRsvps(eventId: string) {
+  return apiFetch<HostRsvp[]>(`/host/events/${eventId}/rsvps/`);
 }
