@@ -241,7 +241,9 @@ export function NotificationBell({ panel = true }: { panel?: boolean }) {
 
   const icon = (
     <span className="relative grid size-10 place-items-center rounded-full transition hover:bg-black/[0.04]">
-      <BellIcon className="size-6 text-[#1c1611]" />
+      {/* The same bell as the Notification item in the side menu and tab bar. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/dote/sidebar/notification.svg" alt="" className="size-6" />
       <Badge count={unread} />
     </span>
   );
