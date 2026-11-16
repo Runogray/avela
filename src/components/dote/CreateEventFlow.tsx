@@ -80,6 +80,8 @@ const CATEGORY_LABEL: Record<string, string> = {
   wedding: "Wedding Category",
   birthday: "Birthday Category",
   baby: "Baby shower Category",
+  graduation: "Graduation Category",
+  farewell: "Farewell Category",
 };
 
 export function CreateEventFlow({ editId }: { editId?: string } = {}) {
@@ -611,6 +613,10 @@ function categoryOptionsFor(occasion: string): string[] {
     ? ["White wedding", "Traditional", "Civil / court", "Introduction"]
     : occasion === "birthday"
     ? ["Milestone birthday", "Kids party", "Surprise party"]
+    : occasion === "graduation"
+    ? ["University", "Secondary school", "Master’s", "PhD", "Call to Bar", "Professional"]
+    : occasion === "farewell"
+    ? ["Celebration of life", "Funeral service", "Memorial service", "Wake keeping", "Thanksgiving service"]
     : ["Baby shower", "Naming ceremony", "Gender reveal"];
 }
 
@@ -1127,6 +1133,18 @@ const OCC_META: Record<
     chipBg: "#fdeaf9",
     chipText: "#99335a",
     cover: "linear-gradient(135deg, #FFB2FB 0%, #d4537e 100%)",
+  },
+  graduation: {
+    label: "Graduation",
+    chipBg: "#fff6e0",
+    chipText: "#7a5a12",
+    cover: "linear-gradient(135deg, #FFD27A 0%, #b8860b 100%)",
+  },
+  farewell: {
+    label: "Celebration of life",
+    chipBg: "#f2eefb",
+    chipText: "#4e4677",
+    cover: "linear-gradient(135deg, #D9CCFF 0%, #5e548e 100%)",
   },
 };
 

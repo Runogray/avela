@@ -29,6 +29,8 @@ const OCC: Record<string, { cover: string }> = {
   wedding: { cover: "linear-gradient(135deg, #7EDFFF 0%, #00829f 100%)" },
   birthday: { cover: "linear-gradient(135deg, #B3FF84 0%, #63991e 100%)" },
   baby: { cover: "linear-gradient(135deg, #FFB2FB 0%, #d4537e 100%)" },
+  graduation: { cover: "linear-gradient(135deg, #FFD27A 0%, #b8860b 100%)" },
+  farewell: { cover: "linear-gradient(135deg, #D9CCFF 0%, #5e548e 100%)" },
 };
 
 

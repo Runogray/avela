@@ -10,7 +10,7 @@
 import { apiFetch } from "./api";
 
 /* ---------------------------------- types --------------------------------- */
-export type ApiOccasion = "wedding" | "birthday" | "baby_shower";
+export type ApiOccasion = "wedding" | "birthday" | "baby_shower" | "graduation" | "farewell";
 
 export interface ApiWishlistItem {
   id: string;
@@ -80,9 +80,10 @@ export interface HostEvent {
 export function occApiToUi(o: string): string {
   return o === "baby_shower" ? "baby" : o;
 }
+const API_OCCASIONS: ApiOccasion[] = ["wedding", "birthday", "baby_shower", "graduation", "farewell"];
 export function occUiToApi(o: string): ApiOccasion {
   if (o === "baby") return "baby_shower";
-  return (o === "wedding" || o === "birthday" ? o : "birthday") as ApiOccasion;
+  return (API_OCCASIONS.includes(o as ApiOccasion) ? o : "birthday") as ApiOccasion;
 }
 
 /* ------------------------------ date helpers ------------------------------ */

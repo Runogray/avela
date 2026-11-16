@@ -19,6 +19,8 @@ const COVER: Record<string, string> = {
   wedding: "linear-gradient(135deg, #7EDFFF 0%, #00829f 100%)",
   birthday: "linear-gradient(135deg, #B3FF84 0%, #63991e 100%)",
   baby_shower: "linear-gradient(135deg, #FFB2FB 0%, #d4537e 100%)",
+  graduation: "linear-gradient(135deg, #FFD27A 0%, #b8860b 100%)",
+  farewell: "linear-gradient(135deg, #D9CCFF 0%, #5e548e 100%)",
 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

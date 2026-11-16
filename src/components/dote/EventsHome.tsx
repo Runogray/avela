@@ -57,6 +57,8 @@ const OCC: Record<string, { label: string; chipBg: string; chipBorder: string; c
   wedding: { label: "Wedding", chipBg: "#EAFAFF", chipBorder: "#B4E7FF", chipText: "#529AE2", cover: "linear-gradient(135deg, #7EDFFF 0%, #00829f 100%)" },
   birthday: { label: "Birthday", chipBg: "#EEFCE3", chipBorder: "#C7EDA0", chipText: "#5F9A2B", cover: "linear-gradient(135deg, #B3FF84 0%, #63991e 100%)" },
   baby: { label: "Baby shower", chipBg: "#FDEAF9", chipBorder: "#F6C3EA", chipText: "#C85BA8", cover: "linear-gradient(135deg, #FFB2FB 0%, #d4537e 100%)" },
+  graduation: { label: "Graduation", chipBg: "#FFF6E0", chipBorder: "#F5DDA0", chipText: "#A67A12", cover: "linear-gradient(135deg, #FFD27A 0%, #b8860b 100%)" },
+  farewell: { label: "Farewell", chipBg: "#F2EEFB", chipBorder: "#DCD3F2", chipText: "#5E548E", cover: "linear-gradient(135deg, #D9CCFF 0%, #5e548e 100%)" },
 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

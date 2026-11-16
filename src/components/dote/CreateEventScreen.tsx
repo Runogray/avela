@@ -21,13 +21,17 @@ const OCCASIONS: Occasion[] = [
   { key: "wedding", name: "Wedding", tagline: "Two hearts, one celebration.", photo: "/dote/occasions/wedding.jpg", nameColor: "#7EDFFF" },
   { key: "birthday", name: "Birthday", tagline: "Another year worth celebrating.", photo: "/dote/occasions/birthday.jpg", nameColor: "#B3FF84" },
   { key: "baby", name: "Baby shower", tagline: "A little one on the way.", photo: "/dote/occasions/baby.jpg", nameColor: "#FFB2FB" },
+  { key: "graduation", name: "Graduation", tagline: "Hard work, well celebrated.", photo: "/dote/occasions/graduation.jpg", nameColor: "#FFD27A" },
+  // A celebration of life: gentle wording throughout (tributes, "the family").
+  { key: "farewell", name: "Farewell", tagline: "Celebrating a life well lived.", photo: "/dote/occasions/farewell.jpg", nameColor: "#D9CCFF" },
 ];
 
 // Warm→cool page wash from the Figma.
 const SCREEN_BG =
   "linear-gradient(150.9deg, #FFFEF7 0.85%, #F8F5FF 41.76%, #FAFEFF 74.51%)";
 
-/** Create a new event, occasion picker. Carousel on mobile, 3-up on desktop. */
+/** Create a new event, occasion picker. Carousel on mobile; on desktop a
+ *  grid of photo cards (three, then two) with Create Event pinned below. */
 export function CreateEventScreen() {
   const router = useRouter();
   const [active, setActive] = useState(1); // mobile carousel centre (Birthday)
@@ -92,7 +96,29 @@ export function CreateEventScreen() {
             </div>
           </div>
 
-          <CreateButton className="mt-8" disabled={!selected} onClick={createEvent} />
+          {/* Where you are among the occasions; tap to jump. */}
+          <div className="mt-5 flex items-center gap-2" role="tablist" aria-label="Occasions">
+            {OCCASIONS.map((o, i) => (
+              <button
+                key={o.key}
+                type="button"
+                role="tab"
+                aria-selected={i === active}
+                aria-label={o.name}
+                onClick={() => {
+                  if (i === active) return;
+                  setDir(i > active ? 1 : -1);
+                  setActive(i);
+                }}
+                className={cn(
+                  "h-2 rounded-full transition-all",
+                  i === active ? "w-6 bg-teal" : "w-2 bg-[#cbe7f0] hover:bg-[#9fd3e1]"
+                )}
+              />
+            ))}
+          </div>
+
+          <CreateButton className="mt-7" disabled={!selected} onClick={createEvent} />
         </main>
 
         <div className="fixed inset-x-0 bottom-0">
@@ -105,20 +131,26 @@ export function CreateEventScreen() {
         <TopBar section="" />
         <div className="flex min-h-0 flex-1">
           <Sidebar active="new" />
-          <main className="flex min-h-0 flex-1 justify-center overflow-y-auto px-8 pt-[60px]">
-            <div className="flex w-[742px] shrink-0 flex-col items-center">
+          <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <div className="mx-auto flex w-full max-w-[720px] flex-col items-center px-8 pb-6 pt-8">
               <Heading className="text-center" size="desktop" />
-              <div className="mt-9 flex gap-5">
+              {/* Three across, then two centred: 3 × 180px cards + 2 × 16px gaps,
+                  sized so both rows and the button fit a 1440×900 laptop. */}
+              <div className="mt-6 flex w-[572px] flex-wrap justify-center gap-4">
                 {OCCASIONS.map((occ) => (
                   <OccasionCard
                     key={occ.key}
                     occ={occ}
+                    size="md"
                     selected={selected === occ.key}
                     onSelect={() => setSelected(occ.key)}
                   />
                 ))}
               </div>
-              <CreateButton className="mt-8" disabled={!selected} onClick={createEvent} />
+            </div>
+            {/* Pinned so it's in reach on a laptop screen without scrolling. */}
+            <div className="sticky bottom-0 mt-auto flex justify-center bg-gradient-to-t from-[#fafeff] via-[#fafeff]/95 to-[#fafeff]/0 pb-7 pt-6">
+              <CreateButton disabled={!selected} onClick={createEvent} />
             </div>
           </main>
         </div>
@@ -168,10 +200,13 @@ function OccasionCard({
   occ,
   selected,
   onSelect,
+  size = "lg",
 }: {
   occ: Occasion;
   selected: boolean;
   onSelect: () => void;
+  /** "lg" for the phone carousel, "md" for the desktop grid. */
+  size?: "lg" | "md";
 }) {
   return (
     <div
@@ -185,7 +220,11 @@ function OccasionCard({
         }
       }}
       aria-pressed={selected}
-      className="relative h-[335px] w-[234px] shrink-0 cursor-pointer overflow-hidden rounded-[26px] transition hover:brightness-[1.03]"
+      className={cn(
+        "relative shrink-0 cursor-pointer overflow-hidden rounded-[26px] transition hover:brightness-[1.03]",
+        size === "lg" ? "h-[335px] w-[234px]" : "h-[256px] w-[180px]",
+        selected && "ring-[3px] ring-teal ring-offset-2 ring-offset-[#fafeff]"
+      )}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={occ.photo} alt={occ.name} className="absolute inset-0 h-full w-full object-cover" />

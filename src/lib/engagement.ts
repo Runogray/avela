@@ -17,7 +17,7 @@ export interface ApiInviteEvent {
   id: string;
   slug: string;
   title: string;
-  occasion: "wedding" | "birthday" | "baby_shower";
+  occasion: "wedding" | "birthday" | "baby_shower" | "graduation" | "farewell";
   starts_at: string;
   venue: string;
   cover_image: string;

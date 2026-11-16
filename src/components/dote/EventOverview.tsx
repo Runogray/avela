@@ -74,6 +74,8 @@ const RECIPIENT: Record<string, string> = {
   wedding: "the couple",
   birthday: "the celebrant",
   baby: "the parents",
+  graduation: "the graduate",
+  farewell: "the family",
 };
 type StoredEvent = {
   id: string;
@@ -97,6 +99,8 @@ const OCC: Record<string, { label: string; cover: string }> = {
   wedding: { label: "White Wedding", cover: "linear-gradient(135deg, #7EDFFF 0%, #00829f 100%)" },
   birthday: { label: "Birthday", cover: "linear-gradient(135deg, #B3FF84 0%, #63991e 100%)" },
   baby: { label: "Baby Shower", cover: "linear-gradient(135deg, #FFB2FB 0%, #d4537e 100%)" },
+  graduation: { label: "Graduation", cover: "linear-gradient(135deg, #FFD27A 0%, #b8860b 100%)" },
+  farewell: { label: "Celebration of life", cover: "linear-gradient(135deg, #D9CCFF 0%, #5e548e 100%)" },
 };
 
 const DESC_FALLBACK: Record<string, string> = {
@@ -106,6 +110,10 @@ const DESC_FALLBACK: Record<string, string> = {
     "Another year, another reason to celebrate! Join me as I mark a brand new chapter surrounded by the people who make life sweeter, with good vibes, great music, and a whole lot of cake.",
   baby:
     "A little miracle is on the way, and we can’t wait to celebrate! Join us for an afternoon of love, laughter, and sweet anticipation as we shower our little bundle of joy with all the good wishes in the world.",
+  graduation:
+    "The late nights paid off! Join me as I celebrate this milestone with the people who cheered me on every step of the way, with good food, great music, and a whole lot of pride.",
+  farewell:
+    "We gather to honour a life that touched so many of us. Join our family as we remember, give thanks, and celebrate the love and memories that will stay with us always.",
 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -438,7 +446,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
               onClick={() => document.getElementById("well-wishes")?.scrollIntoView({ behavior: "smooth" })}
               className="bg-teal px-[42px] py-[14px] text-[16px] tracking-[0.35px] text-teal-ink transition hover:brightness-95"
             >
-              Send well wishes
+              {wishWords(ev.occasion).cta}
             </button>
           ) : (
             <button
@@ -465,7 +473,9 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
       {/* ========================== WELCOME ========================== */}
       <section className="mx-auto flex max-w-[760px] flex-col items-center gap-[38px] px-6 py-16 text-center">
         <div className="flex flex-col items-center gap-4">
-          <h2 className="font-italiana text-[28px] tracking-[-0.8px] sm:text-[32px]">Welcome to my event</h2>
+          <h2 className="font-italiana text-[28px] tracking-[-0.8px] sm:text-[32px]">
+            {ev.occasion === "farewell" ? "In loving memory" : "Welcome to my event"}
+          </h2>
           <p className="max-w-[704px] text-[17px] leading-relaxed sm:text-[20px]">
             {ev.description?.trim() || DESC_FALLBACK[ev.occasion] || DESC_FALLBACK.wedding}
           </p>
@@ -568,13 +578,13 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
 
       {/* ===================== SEND WELL WISHES ====================== */}
       {guest && (
-        <WellWishesCard slug={ev.slug} recipient={RECIPIENT[ev.occasion] ?? "the celebrant"} />
+        <WellWishesCard slug={ev.slug} occasion={ev.occasion} recipient={RECIPIENT[ev.occasion] ?? "the celebrant"} />
       )}
 
       {/* ============== WELL WISHES RECEIVED (host view) ============= */}
       {!guest && (
         <div id="well-wishes" className="scroll-mt-6">
-          <WellWishesReceived eventId={ev.id} />
+          <WellWishesReceived eventId={ev.id} occasion={ev.occasion} />
         </div>
       )}
 
@@ -2090,11 +2100,46 @@ function ThankYouBand({ eventTitle, occasion, desktop }: { eventTitle: string; o
   );
 }
 
+// Guests' notes to the host. For a celebration of life (farewell) they're
+// tributes to the person being remembered, so the wording is gentler.
+function wishWords(occasion?: string) {
+  const tribute = occasion === "farewell";
+  return {
+    cta: tribute ? "Leave a tribute" : "Send well wishes",
+    intro: (r: string) => (tribute ? `Share a memory or kind words for ${r}.` : `Leave a heartfelt note for ${r}.`),
+    placeholder: tribute ? "Share a memory or kind words…" : "Share a warm message…",
+    send: tribute ? "Send tribute" : "Send well wishes",
+    thanks: (first: string) => (tribute ? `Thank you, ${first}.` : `Thank you, ${first}!`),
+    sent: (r: string) =>
+      tribute
+        ? `Your tribute has been shared with ${r}. Thank you for remembering with us.`
+        : `Your well wishes are on their way to ${r}. It means the world.`,
+    failed: tribute
+      ? "We couldn’t send your tribute. Please try again."
+      : "We couldn’t send your well wishes. Please try again.",
+    another: tribute ? "Leave another" : "Send another",
+    heading: tribute ? "Tributes" : "Well wishes",
+    count: (n: number) =>
+      tribute
+        ? `${n} ${n === 1 ? "tribute" : "tributes"} from your guests`
+        : `${n} heartfelt ${n === 1 ? "note" : "notes"} from your guests`,
+    none: tribute ? "Tributes from your guests will appear here" : "Notes from your guests will appear here",
+    empty: tribute
+      ? "No tributes yet. Share your invite link so family and friends can leave one."
+      : "No well wishes yet. Share your invite link to start receiving them.",
+    loadFailed: tribute
+      ? "We couldn’t load your tributes. Refresh to try again."
+      : "We couldn’t load your well wishes. Refresh to try again.",
+    all: (n: number) => (tribute ? `Show all ${n} tributes` : `Show all ${n} well wishes`),
+  };
+}
+
 // Longest well wish: about six lines on the narrowest card (three across on
 // desktop), so notes fill the card without towering over the others.
 const WISH_MAX = 220;
 
-function WellWishesCard({ slug, recipient }: { slug?: string; recipient: string }) {
+function WellWishesCard({ slug, occasion, recipient }: { slug?: string; occasion?: string; recipient: string }) {
+  const words = wishWords(occasion);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
@@ -2118,7 +2163,7 @@ function WellWishesCard({ slug, recipient }: { slug?: string; recipient: string 
       });
       setSent(true);
     } catch (err) {
-      setError(apiErrorMessage(err, "We couldn’t send your well wishes. Please try again."));
+      setError(apiErrorMessage(err, words.failed));
     } finally {
       setBusy(false);
     }
@@ -2130,10 +2175,8 @@ function WellWishesCard({ slug, recipient }: { slug?: string; recipient: string 
         {sent ? (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <span className="grid size-14 place-items-center rounded-full bg-teal/10 text-[28px]">💌</span>
-            <h3 className="font-italiana text-[24px] tracking-[-0.8px]">Thank you, {name.trim().split(" ")[0]}!</h3>
-            <p className="max-w-[360px] text-[15px] leading-relaxed text-[#5c5c5c]">
-              Your well wishes are on their way to {recipient}. It means the world.
-            </p>
+            <h3 className="font-italiana text-[24px] tracking-[-0.8px]">{words.thanks(name.trim().split(" ")[0])}</h3>
+            <p className="max-w-[360px] text-[15px] leading-relaxed text-[#5c5c5c]">{words.sent(recipient)}</p>
             <button
               type="button"
               onClick={() => {
@@ -2144,14 +2187,14 @@ function WellWishesCard({ slug, recipient }: { slug?: string; recipient: string 
               }}
               className="mt-2 text-[14px] font-medium text-teal transition hover:underline"
             >
-              Send another
+              {words.another}
             </button>
           </div>
         ) : (
           <>
             <div className="flex flex-col gap-1 text-center">
-              <h3 className="font-italiana text-[26px] tracking-[-0.8px]">Send well wishes</h3>
-              <p className="text-[14px] text-[#5c5c5c]">Leave a heartfelt note for {recipient}.</p>
+              <h3 className="font-italiana text-[26px] tracking-[-0.8px]">{words.cta}</h3>
+              <p className="text-[14px] text-[#5c5c5c]">{words.intro(recipient)}</p>
             </div>
 
             <div className="flex flex-col gap-4">
@@ -2178,7 +2221,7 @@ function WellWishesCard({ slug, recipient }: { slug?: string; recipient: string 
                   onChange={(e) => setMessage(e.target.value.slice(0, WISH_MAX))}
                   maxLength={WISH_MAX}
                   rows={4}
-                  placeholder="Share a warm message…"
+                  placeholder={words.placeholder}
                   aria-describedby="wish-count"
                   className="w-full resize-none rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-4 py-3 text-[15px] leading-relaxed text-[#1c1611] outline-none transition placeholder:text-[#cccccc] focus:border-teal"
                 />
@@ -2204,7 +2247,7 @@ function WellWishesCard({ slug, recipient }: { slug?: string; recipient: string 
               disabled={!valid || busy}
               className="h-[52px] w-full rounded-[50px] text-[15px] font-medium tracking-[0.35px] text-teal-ink transition disabled:cursor-not-allowed disabled:bg-[#d0ebf1] enabled:bg-teal enabled:hover:brightness-95"
             >
-              {busy ? "Sending…" : "Send well wishes"}
+              {busy ? "Sending…" : words.send}
             </button>
           </>
         )}
@@ -2223,7 +2266,8 @@ function fmtWhen(ts: number): string {
 
 const WISHES_PREVIEW = 3;
 
-function WellWishesReceived({ eventId }: { eventId: string }) {
+function WellWishesReceived({ eventId, occasion }: { eventId: string; occasion?: string }) {
+  const words = wishWords(occasion);
   const [wishes, setWishes] = useState<WellWish[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -2271,20 +2315,20 @@ function WellWishesReceived({ eventId }: { eventId: string }) {
   return (
     <section className="flex flex-col items-center gap-[26px] px-6 py-16">
       <div className="flex flex-col items-center gap-[6px] text-center">
-        <h2 className="font-italiana text-[28px] tracking-[-0.8px] sm:text-[32px]">Well wishes</h2>
+        <h2 className="font-italiana text-[28px] tracking-[-0.8px] sm:text-[32px]">{words.heading}</h2>
         <p className="text-[14px] text-[#5c5c5c]">
           {failed
-            ? "We couldn’t load your well wishes. Refresh to try again."
+            ? words.loadFailed
             : wishes.length > 0
-              ? `${wishes.length} heartfelt ${wishes.length === 1 ? "note" : "notes"} from your guests`
-              : "Notes from your guests will appear here"}
+              ? words.count(wishes.length)
+              : words.none}
         </p>
       </div>
 
       {failed ? null : wishes.length === 0 ? (
         <div className="flex w-full max-w-[520px] flex-col items-center gap-2 rounded-[20px] border border-dashed border-[#e0dccf] bg-white/60 px-6 py-12 text-center">
           <span className="text-[28px]">💌</span>
-          <p className="text-[15px] text-[#6e6558]">No well wishes yet. Share your invite link to start receiving them.</p>
+          <p className="text-[15px] text-[#6e6558]">{words.empty}</p>
         </div>
       ) : (
         <>
@@ -2308,7 +2352,7 @@ function WellWishesReceived({ eventId }: { eventId: string }) {
               onClick={() => setExpanded((e) => !e)}
               className="rounded-[50px] border border-teal px-[32px] py-[12px] text-[14px] font-medium tracking-[0.2px] text-teal transition hover:bg-teal/5"
             >
-              {expanded ? "Show less" : `Show all ${wishes.length} well wishes`}
+              {expanded ? "Show less" : words.all(wishes.length)}
             </button>
           )}
         </>
