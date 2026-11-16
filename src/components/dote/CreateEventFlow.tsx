@@ -1673,6 +1673,7 @@ function RsvpFields({
             sub="They answer Yes, Maybe or No, and say if they’re bringing a plus-one."
             on={v.rsvpEnabled}
             onChange={set.setRsvpEnabled}
+            alignTop
           />
         </div>
       </Field>
@@ -1695,14 +1696,17 @@ function ToggleRow({
   sub,
   on,
   onChange,
+  alignTop = false,
 }: {
   label: string;
   sub?: string;
   on: boolean;
   onChange: (b: boolean) => void;
+  /** Line the switch up with the label rather than centring it on label + sub. */
+  alignTop?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className={cn("flex justify-between gap-4", alignTop ? "items-start" : "items-center")}>
       <div className="flex flex-col gap-1 text-[#1c1611]">
         <span className="text-[14px] font-medium tracking-[-0.28px]">{label}</span>
         {sub && <span className="text-[12px] tracking-[-0.24px]">{sub}</span>}
@@ -1714,7 +1718,8 @@ function ToggleRow({
         aria-label={label}
         onClick={() => onChange(!on)}
         className={cn(
-          "flex w-10 items-center rounded-full p-[2px] transition",
+          "flex w-10 shrink-0 items-center rounded-full p-[2px] transition",
+          alignTop && "mt-px",
           on ? "justify-end bg-[#06aacf]" : "justify-start bg-[#dedede]"
         )}
       >
