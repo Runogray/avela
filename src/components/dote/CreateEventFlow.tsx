@@ -1651,8 +1651,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 // RSVP options for an event with a venue: ask guests if they're attending,
-// and how many people one reply may bring (the guest included).
-const PARTY_OPTIONS = Array.from({ length: 10 }, (_, i) => (i === 0 ? "1 person" : `${i + 1} people`));
+// and how many plus-ones each may bring. Stored as the most people per reply
+// (the guest included), so "2 plus-ones" is a limit of 3.
+const PLUS_ONE_OPTIONS = Array.from({ length: 10 }, (_, i) =>
+  i === 0 ? "No plus-ones" : i === 1 ? "1 plus-one" : `${i} plus-ones`,
+);
 
 function RsvpFields({
   v,
@@ -1667,19 +1670,19 @@ function RsvpFields({
         <div className="rounded-[16px] border border-[#e8f1f3] bg-white px-4 py-4">
           <ToggleRow
             label="Ask guests if they’re attending"
-            sub="They answer Yes, Maybe or No and say how many are coming."
+            sub="They answer Yes, Maybe or No, and say if they’re bringing a plus-one."
             on={v.rsvpEnabled}
             onChange={set.setRsvpEnabled}
           />
         </div>
       </Field>
       {v.rsvpEnabled && (
-        <Field label="Most people per reply">
+        <Field label="Plus-ones per guest">
           <SelectInput
-            value={PARTY_OPTIONS[v.rsvpPartyMax - 1] ?? ""}
-            onChange={(s) => set.setRsvpPartyMax(PARTY_OPTIONS.indexOf(s) + 1)}
+            value={PLUS_ONE_OPTIONS[v.rsvpPartyMax - 1] ?? ""}
+            onChange={(s) => set.setRsvpPartyMax(PLUS_ONE_OPTIONS.indexOf(s) + 1)}
             placeholder="Choose"
-            options={PARTY_OPTIONS}
+            options={PLUS_ONE_OPTIONS}
           />
         </Field>
       )}

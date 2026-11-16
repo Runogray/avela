@@ -2453,6 +2453,11 @@ function partyLabel(n: number) {
   return n === 1 ? "1 person" : `${n} people`;
 }
 
+/** "a plus-one", "2 plus-ones": the extra people a reply brings. */
+function plusOnes(n: number) {
+  return n === 1 ? "a plus-one" : `${n} plus-ones`;
+}
+
 /** Guest: "Will you be attending?" Remembers the reply on this device so the
  *  guest sees it next time and can change it. */
 function RsvpCard({
@@ -2539,7 +2544,9 @@ function RsvpCard({
             <p className="text-[15px] leading-relaxed text-[#5c5c5c]">
               {saved.status === "no"
                 ? `Thanks for letting ${recipient} know, ${saved.name.split(" ")[0]}.`
-                : `${saved.name.split(" ")[0]}, we’ve told ${recipient}: ${partyLabel(saved.party)}.`}
+                : `${saved.name.split(" ")[0]}, we’ve told ${recipient} you${saved.status === "maybe" ? " might be" : "’re"} coming${
+                    saved.party > 1 ? ` with ${plusOnes(saved.party - 1)}` : ""
+                  }.`}
             </p>
             <button
               type="button"
@@ -2586,7 +2593,7 @@ function RsvpCard({
                 />
               </WishField>
               {coming && partyMax > 1 && (
-                <WishField label="How many people, including you?">
+                <WishField label="Bringing a plus-one?">
                   <div className="flex h-[52px] items-center justify-between rounded-[14px] border border-[#e8f1f3] bg-[#fbfbfb] px-2">
                     <button
                       type="button"
@@ -2597,7 +2604,9 @@ function RsvpCard({
                     >
                       −
                     </button>
-                    <span className="text-[15px] font-medium text-[#1c1611]">{partyLabel(party)}</span>
+                    <span className="text-[15px] font-medium text-[#1c1611]">
+                      {party === 1 ? "Just me" : `Me + ${party - 1}`}
+                    </span>
                     <button
                       type="button"
                       aria-label="One more"
@@ -2608,7 +2617,9 @@ function RsvpCard({
                       +
                     </button>
                   </div>
-                  <span className="text-[12px] text-[#7a7266]">{`Up to ${partyLabel(partyMax)} per reply.`}</span>
+                  <span className="text-[12px] text-[#7a7266]">
+                    {partyMax === 2 ? "You can bring a plus-one." : `You can bring up to ${partyMax - 1} plus-ones.`}
+                  </span>
                 </WishField>
               )}
               <WishField label="Email or phone (optional)">
@@ -2701,7 +2712,10 @@ function RsvpSummary({ eventId }: { eventId: string }) {
                   <div className="min-w-0">
                     <p className="truncate text-[15px] font-medium text-[#1c1611]">{r.guest_name}</p>
                     <p className="truncate text-[12px] text-[#7a7266]">
-                      {[r.status === "no" ? "" : partyLabel(r.party_size), r.guest_email || r.guest_phone]
+                      {[
+                        r.status === "no" ? "" : r.party_size > 1 ? `+${r.party_size - 1}` : "Just them",
+                        r.guest_email || r.guest_phone,
+                      ]
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
