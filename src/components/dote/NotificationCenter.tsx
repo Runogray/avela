@@ -294,10 +294,14 @@ export function NotificationBell({ panel = true }: { panel?: boolean }) {
                   key={n.id}
                   n={n}
                   unread={!n.read}
-                  onOpen={() => {
-                    setShow(false);
-                    open(n);
-                  }}
+                  onOpen={
+                    n.link
+                      ? () => {
+                          setShow(false);
+                          open(n);
+                        }
+                      : undefined
+                  }
                 />
               ))}
             </div>

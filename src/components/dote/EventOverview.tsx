@@ -158,6 +158,8 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
   // Bumped after a guest reserves or gives, to reload what's still available.
   const [reloadKey, setReloadKey] = useState(0);
   const [viewGift, setViewGift] = useState<StoredItem | null>(null);
+  // Opened from a notification: the one contribution it's about.
+  const [highlight, setHighlight] = useState<string | null>(null);
   // Host view: the account guests transfer cash gifts into (undefined = loading).
   const [bankAcct, setBankAcct] = useState<BankAccount | null | undefined>(undefined);
   useEffect(() => {
@@ -291,19 +293,23 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
   // Host notifications open here: ?gift=<item or goal> shows that gift's
   // contributions (to confirm), #well-wishes scrolls to guests' notes.
   const giftParam = params.get("gift");
+  const contributionParam = params.get("contribution");
   useEffect(() => {
     if (guest || !ev) return;
     const t = setTimeout(() => {
       if (giftParam) {
         const it = (ev.items ?? []).find((x) => x.id === giftParam);
-        if (it) setViewGift(it);
+        if (it) {
+          setViewGift(it);
+          setHighlight(contributionParam);
+        }
         window.history.replaceState(null, "", `/events/${id}`);
       } else if (window.location.hash === "#well-wishes") {
         document.getElementById("well-wishes")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [guest, ev, giftParam, id]);
+  }, [guest, ev, giftParam, contributionParam, id]);
 
   if (!loaded) return null;
   if (!ev) {
@@ -624,7 +630,11 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
             setEv((cur) => cur && { ...cur, items: cur.items?.map((x) => (x.id === viewGift.id ? clear(x) : x)) });
             setViewGift((cur) => cur && clear(cur));
           }}
-          onClose={() => setViewGift(null)}
+          highlight={highlight}
+          onClose={() => {
+            setViewGift(null);
+            setHighlight(null);
+          }}
           onDelete={() => deleteGift(viewGift.id)}
         />
       )}
@@ -1364,9 +1374,12 @@ function GiftContributionsModal({
   onBoughtConfirmed,
   onClose,
   onDelete,
+  highlight,
 }: {
   eventId: string;
   live: boolean; // server-backed event (bank-transfer gifts come from the API)
+  /** A contribution to pick out (opened from its notification or email). */
+  highlight?: string | null;
   item: StoredItem;
   eventTitle: string;
   occasion?: string;
@@ -1416,6 +1429,19 @@ function GiftContributionsModal({
       cancelled = true;
     };
   }, [eventId, item.id, item.name, item.type, live]);
+
+  // Bring the highlighted contribution into view once the list has loaded.
+  // (Phone and desktop layouts both render it; scroll the visible one.)
+  useEffect(() => {
+    if (!loaded || !highlight) return;
+    const t = setTimeout(() => {
+      const el = [...document.querySelectorAll<HTMLElement>(`[data-contribution="${highlight}"]`)].find(
+        (e) => e.offsetParent !== null,
+      );
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [loaded, highlight]);
 
   async function confirm(r: Contribution) {
     setActing(r.id);
@@ -1546,7 +1572,13 @@ function GiftContributionsModal({
             ) : (
               <div className="flex flex-col gap-[14px]">
                 {rows.map((r) => (
-                  <div key={r.id} className="flex flex-col gap-3 rounded-[20px] border border-[#f0f0f0] bg-white/60 p-[14px]">
+                  <div
+                    key={r.id}
+                    data-contribution={r.id}
+                    className={`flex flex-col gap-3 rounded-[20px] border p-[14px] ${
+                      r.id === highlight ? "border-teal bg-[#f0f7f9] ring-2 ring-teal/30" : "border-[#f0f0f0] bg-white/60"
+                    }`}
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Avatar name={r.name} />
@@ -1659,7 +1691,13 @@ function GiftContributionsModal({
               ) : (
                 <div className="flex flex-col gap-[14px]">
                   {rows.map((r) => (
-                    <div key={r.id} className="flex flex-col gap-3 rounded-[18px] border border-[#f0f0f0] bg-white p-[18px]">
+                    <div
+                      key={r.id}
+                      data-contribution={r.id}
+                      className={`flex flex-col gap-3 rounded-[18px] border p-[18px] ${
+                        r.id === highlight ? "border-teal bg-[#f0f7f9] ring-2 ring-teal/30" : "border-[#f0f0f0] bg-white"
+                      }`}
+                    >
                     <div className="flex items-center justify-between">
                       <div className="flex w-[280px] items-center gap-3">
                         <Avatar name={r.name} />

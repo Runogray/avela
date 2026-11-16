@@ -187,7 +187,7 @@ export function Notifications() {
               <p className="px-1 text-[12px] font-semibold uppercase tracking-[0.4px] text-[#8a8a8a]">{g.label}</p>
               <div className="flex flex-col gap-[10px]">
                 {g.items.map((n) => (
-                  <NotifRow key={n.id} n={n} unread={!n.read} onOpen={offline ? undefined : () => open(n)} />
+                  <NotifRow key={n.id} n={n} unread={!n.read} onOpen={offline || !n.link ? undefined : () => open(n)} />
                 ))}
               </div>
             </div>
