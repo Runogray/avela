@@ -162,3 +162,19 @@ body {
 .animate-pop {
   animation: pop 0.5s var(--ease-keepsake) both;
 }
+
+/* Soft directional swap for the occasion carousel. --occ-from sets the entry
+   offset: +x when advancing (slides in from the right), −x when going back. */
+@keyframes occ-swap {
+  from {
+    opacity: 0;
+    transform: translateX(var(--occ-from, 0)) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+.animate-occ-swap {
+  animation: occ-swap 0.4s var(--ease-keepsake) both;
+}
