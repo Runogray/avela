@@ -26,6 +26,8 @@ import {
   declineTransfer,
   sendRsvp,
   listHostRsvps,
+  cardGiftFee,
+  startCardGift,
   type HostRsvp,
   type RsvpStatus,
   type TransferDetails,
@@ -97,6 +99,7 @@ type StoredEvent = {
   gallery?: string[];
   items?: StoredItem[];
   acceptsTransfers?: boolean; // host added a bank account (guest view)
+  acceptsCard?: boolean; // guests can also pay by card on Paystack (guest view)
   rsvpEnabled?: boolean; // guests say if they're attending (only with a venue)
   rsvpPartyMax?: number; // most people per reply, the guest included
   coverPos?: string; // cover focus point (object-position)
@@ -623,6 +626,7 @@ export function EventOverview({ guest = false }: { guest?: boolean } = {}) {
         <ContributeModal
           slug={ev.slug}
           acceptsTransfers={!!ev.acceptsTransfers}
+          acceptsCard={!!ev.acceptsCard}
           item={contribute}
           recipient={RECIPIENT[ev.occasion] ?? "the celebrant"}
           onClose={() => setContribute(null)}
@@ -678,6 +682,7 @@ const QUICK_AMOUNTS = [5000, 10000, 25000, 50000];
 function ContributeModal({
   slug,
   acceptsTransfers,
+  acceptsCard = false,
   item,
   recipient,
   onClose,
@@ -685,6 +690,7 @@ function ContributeModal({
 }: {
   slug?: string;
   acceptsTransfers: boolean;
+  acceptsCard?: boolean;
   item: StoredItem;
   recipient: string;
   onClose: () => void;
@@ -718,6 +724,25 @@ function ContributeModal({
   const cashUnavailable = !buying && (!acceptsTransfers || !slug);
   const overRemaining = !buying && remaining !== null && amount > remaining;
   const emailBad = email.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  // Cash gifts: a bank transfer (no fee), or card/USSD/bank on Paystack, where
+  // the guest pays the fee on top and the host receives the whole gift.
+  const [payBy, setPayBy] = useState<"transfer" | "card">("transfer");
+  const byCard = !buying && acceptsCard && payBy === "card";
+  const [quote, setQuote] = useState<{ amount: number; fee: number; total: number } | null>(null);
+  useEffect(() => {
+    if (!byCard || !slug || amount <= 0) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      cardGiftFee(slug, amount * 100)
+        .then((q) => alive && setQuote({ amount, fee: q.fee_kobo / 100, total: q.total_kobo / 100 }))
+        .catch(() => alive && setQuote(null));
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [byCard, slug, amount]);
+  const cardQuote = quote && quote.amount === amount ? quote : null;
   const valid = buying
     ? name.trim().length > 0 && !emailBad
     : amount > 0 && name.trim().length > 0 && !cashUnavailable && !overRemaining && !emailBad;
@@ -741,6 +766,27 @@ function ContributeModal({
         setError(apiErrorMessage(err, "We couldn’t reserve this gift. Please try again."));
         onChanged();
       } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    if (byCard) {
+      setBusy(true);
+      setError("");
+      try {
+        const c = await startCardGift(slug!, {
+          amount_kobo: amount * 100,
+          giver_name: name.trim(),
+          giver_email: email.trim() || undefined,
+          goal_id: item.type === "monetary" ? item.id : null,
+          wishlist_item_id: item.type === "physical" ? item.id : null,
+        });
+        // Remember it on this device; Paystack brings the guest back to the gift page.
+        rememberGift({ token: c.gift_token, slug: slug!, targetId: item.id });
+        window.location.href = c.checkout_url;
+      } catch (err) {
+        setError(apiErrorMessage(err, "We couldn’t start the card payment. Please try again, or send a bank transfer."));
+        onChanged();
         setBusy(false);
       }
       return;
@@ -994,6 +1040,55 @@ function ContributeModal({
               </span>
             </WishField>
 
+            {!buying && acceptsCard && !cashUnavailable && (
+              <WishField label="How would you like to pay?">
+                <div className="flex flex-col gap-2" role="radiogroup" aria-label="How would you like to pay?">
+                  {(
+                    [
+                      { key: "transfer", title: "Bank transfer", sub: "Send it from your bank app. No fee." },
+                      {
+                        key: "card",
+                        title: "Card, USSD or bank",
+                        sub: `Pay instantly on Paystack${
+                          cardQuote && byCard ? `. ₦${cardQuote.fee.toLocaleString()} fee.` : ". A small fee applies."
+                        }`,
+                      },
+                    ] as const
+                  ).map((o) => (
+                    <button
+                      key={o.key}
+                      type="button"
+                      role="radio"
+                      aria-checked={payBy === o.key}
+                      onClick={() => setPayBy(o.key)}
+                      className={`flex items-center gap-3 rounded-[14px] border px-4 py-3 text-left transition ${
+                        payBy === o.key ? "border-teal bg-[#f0f7f9]" : "border-[#e8f1f3] bg-[#fbfbfb] hover:border-teal/50"
+                      }`}
+                    >
+                      <span
+                        className={`grid size-5 shrink-0 place-items-center rounded-full border-2 ${
+                          payBy === o.key ? "border-teal" : "border-[#cccccc]"
+                        }`}
+                      >
+                        {payBy === o.key && <span className="size-2.5 rounded-full bg-teal" />}
+                      </span>
+                      <span className="flex flex-col">
+                        <span className="text-[15px] font-medium text-[#1c1611]">{o.title}</span>
+                        <span className="text-[12px] text-[#6e6558]">{o.sub}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {byCard && cardQuote && (
+                  <p className="text-[13px] text-[#1c1611]">
+                    {`₦${cardQuote.amount.toLocaleString()} gift + ₦${cardQuote.fee.toLocaleString()} fee = `}
+                    <b>{`₦${cardQuote.total.toLocaleString()}`}</b>
+                    {`. ${recipient[0].toUpperCase() + recipient.slice(1)} receives the full ₦${cardQuote.amount.toLocaleString()}.`}
+                  </p>
+                )}
+              </WishField>
+            )}
+
             {overRemaining && remaining !== null && (
               <p className="rounded-[14px] border border-[#f3e3c3] bg-[#fffaf0] px-4 py-3 text-[13px] leading-relaxed text-[#7a5a1e]">
                 Only &#8358;{remaining.toLocaleString()} is left to fully fund this gift.
@@ -1028,13 +1123,17 @@ function ContributeModal({
                   : `Reserve ${item.name}`
                 : busy
                   ? "Just a moment…"
-                  : `Contribute${amount > 0 ? ` ₦${amount.toLocaleString()}` : ""}`}
+                  : byCard
+                    ? `Pay${cardQuote ? ` ₦${cardQuote.total.toLocaleString()}` : ""}`
+                    : `Contribute${amount > 0 ? ` ₦${amount.toLocaleString()}` : ""}`}
             </button>
             {!cashUnavailable && (
               <p className="-mt-2 text-center text-[12px] text-[#9a9a9a]">
                 {buying
                   ? "Tap “I’ve bought it” once you’ve ordered it."
-                  : "Next, you’ll see the account to send your gift to."}
+                  : byCard
+                    ? "You’ll pay securely on Paystack, then come back here."
+                    : "Next, you’ll see the account to send your gift to."}
               </p>
             )}
           </>
@@ -1366,6 +1465,7 @@ type Contribution = {
   status?: string;
   reference?: string;
   markedSent?: boolean; // guest tapped "I've sent it"
+  byCard?: boolean; // paid by card on Paystack, straight to the host's bank
   thankedAt?: string | null; // host sent a thank-you note
   createdAt: number;
 };
@@ -1448,6 +1548,7 @@ function GiftContributionsModal({
             status: t.status,
             reference: t.reference,
             markedSent: !!t.marked_sent_at,
+            byCard: t.method === "gateway",
             email: t.giver_email || undefined,
             thankedAt: t.thanked_at || null,
             createdAt: new Date(t.created_at).getTime(),
@@ -1623,7 +1724,7 @@ function GiftContributionsModal({
                       </div>
                       <div className="flex flex-col items-end gap-0.5 tracking-[-1px]">
                         <p className="text-[16px] font-medium text-black">₦{r.amount.toLocaleString()}</p>
-                        <ContribStatus status={r.status} />
+                        <ContribStatus status={r.status} byCard={r.byCard} />
                       </div>
                     </div>
                     {r.status !== "paid" && (
@@ -1751,7 +1852,7 @@ function GiftContributionsModal({
                         <span className="text-[#5e5e5e]">{fmtContribTime(r.createdAt)}</span>
                       </div>
                       <div className="w-[90px] text-right tracking-[-1px]">
-                        <ContribStatus status={r.status} />
+                        <ContribStatus status={r.status} byCard={r.byCard} />
                       </div>
                     </div>
                     {r.status !== "paid" && (
@@ -2009,9 +2110,12 @@ function ThankYou({
   );
 }
 
-function ContribStatus({ status }: { status?: string }) {
+function ContribStatus({ status, byCard }: { status?: string; byCard?: boolean }) {
   return status === "paid" ? (
-    <p className="text-[16px] font-medium text-[#079e07]">Received</p>
+    <div className="flex flex-col items-end">
+      <p className="text-[16px] font-medium text-[#079e07]">Received</p>
+      {byCard && <p className="text-[12px] text-[#6e6558]">Paid by card</p>}
+    </div>
   ) : (
     <p className="text-[16px] font-medium text-[#c27a00]">Pending</p>
   );

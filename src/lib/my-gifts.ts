@@ -7,10 +7,15 @@ import { apiFetch } from "./api";
  * event page can tag them "Your gift" and flag news with a dot.
  * ------------------------------------------------------------------ */
 
-export type GiftStage = "started" | "held" | "sent" | "received" | "not_received";
+// "paying": a card gift whose payment Paystack hasn't confirmed (yet).
+export type GiftStage = "started" | "paying" | "held" | "sent" | "received" | "not_received";
 
 export interface GuestGift {
   kind: "cash" | "item";
+  /** Cash gifts: paid by card on Paystack, or a bank transfer. */
+  method?: "card" | "transfer";
+  /** Card gifts: the fee the guest paid on top. */
+  fee_kobo?: number;
   stage: GiftStage;
   giver_name: string;
   amount_kobo: number | null;

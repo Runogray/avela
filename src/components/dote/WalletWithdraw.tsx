@@ -5,7 +5,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { BackArrow } from "./BackArrow";
 import { TransactionStatus } from "./TransactionStatus";
 import { recordWalletTx } from "@/lib/walletTx";
-import { getBankAccount, getWallet, saveBankAccount, setWithdrawalPin, verifyNin, withdraw as withdrawApi } from "@/lib/wallet";
+import {
+  getBankAccount,
+  getWallet,
+  listBanks,
+  resolveAccount,
+  saveBankAccount,
+  setWithdrawalPin,
+  verifyNin,
+  withdraw as withdrawApi,
+  type Bank,
+} from "@/lib/wallet";
+import { ApiError } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/api";
 
 // Small mock helpers so the status screen shows plausible values.
@@ -28,28 +39,6 @@ const txRef = () => `TXN-${Math.floor(1000 + Math.random() * 9000)}-${Math.rando
  *   4. Confirm PIN            14552:16601
  * ------------------------------------------------------------------ */
 
-const BANKS = [
-  "Access Bank",
-  "Ecobank",
-  "Fidelity Bank",
-  "First Bank",
-  "FCMB",
-  "GTBank",
-  "Keystone Bank",
-  "Kuda",
-  "Moniepoint",
-  "Opay",
-  "PalmPay",
-  "Polaris Bank",
-  "Providus Bank",
-  "Stanbic IBTC",
-  "Sterling Bank",
-  "UBA",
-  "Union Bank",
-  "Wema Bank",
-  "Zenith Bank",
-];
-
 /** Only follow same-site paths from ?next= (never another origin). */
 function safeNext(next: string | null): string {
   return next && next.startsWith("/") && !next.startsWith("//") ? next : "/wallet";
@@ -67,10 +56,14 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
   const [step, setStep] = useState<Step>(setupNext ? "bank" : "bvn");
 
   const [bvn, setBvn] = useState("");
-  const [bank, setBank] = useState("GTBank");
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [bank, setBank] = useState<Bank | null>(null);
   const [bankOpen, setBankOpen] = useState(false);
+  const [bankQuery, setBankQuery] = useState("");
   const [account, setAccount] = useState("");
+  // From the bank's own records (looked up), never typed.
   const [accountName, setAccountName] = useState("");
+  const [lookup, setLookup] = useState<"idle" | "checking" | "found" | "missing">("idle");
   const [bankErr, setBankErr] = useState("");
   const [savingBank, setSavingBank] = useState(false);
   const [pin, setPin] = useState("");
@@ -85,27 +78,57 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
     getWallet()
       .then((w) => setAvail(w.available_kobo / 100))
       .catch(() => setAvail(0));
-    // Pre-fill a saved account so hosts can review or change it.
-    getBankAccount()
-      .then((b) => {
+    // Paystack's bank list, then pre-fill a saved account so hosts can review
+    // or change it (matched by code, or by name for older saved details).
+    Promise.all([listBanks().catch(() => [] as Bank[]), getBankAccount().catch(() => null)]).then(
+      ([list, b]) => {
+        setBanks(list);
         if (!b) return;
-        if (BANKS.includes(b.bank_name)) setBank(b.bank_name);
+        const match =
+          list.find((x) => x.code === b.bank_code) ??
+          list.find((x) => x.name.toLowerCase() === b.bank_name.toLowerCase());
+        if (match) setBank(match);
         setAccount(b.account_number);
-        setAccountName(b.account_name);
-      })
-      .catch(() => {});
+      },
+    );
   }, []);
 
-  // No account-name lookup service yet, so the host types the name as it
-  // appears on the account (guests see it when sending cash gifts).
-  const bankReady = account.length === 10 && accountName.trim().length >= 3;
+  // Look the account up as soon as there's a bank and ten digits.
+  const bankCode = bank?.code ?? "";
+  useEffect(() => {
+    if (account.length !== 10 || !bankCode) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      setLookup("checking");
+      setAccountName("");
+      resolveAccount(bankCode, account)
+        .then((r) => {
+          if (!alive) return;
+          setAccountName(r.account_name);
+          setLookup("found");
+        })
+        .catch((err) => {
+          if (!alive) return;
+          setLookup(err instanceof ApiError && err.status === 404 ? "missing" : "idle");
+        });
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [account, bankCode]);
+
+  const bankReady = !!bank && account.length === 10 && lookup === "found" && !!accountName;
+  const shownBanks = bankQuery.trim()
+    ? banks.filter((b) => b.name.toLowerCase().includes(bankQuery.trim().toLowerCase()))
+    : banks;
 
   async function saveBank() {
     if (!bankReady || savingBank) return;
     setSavingBank(true);
     setBankErr("");
     try {
-      await saveBankAccount({ bank_name: bank, account_number: account, account_name: accountName.trim() });
+      await saveBankAccount({ bank_name: bank!.name, bank_code: bank!.code, account_number: account });
       if (setupNext) router.push(setupNext);
       else setStep("createPin");
     } catch (err) {
@@ -221,7 +244,7 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
         <h1 className="font-dote text-[28px] font-medium tracking-[-0.4px] text-[#1c1611]">Bank Details</h1>
         {setupNext && (
           <p className="mt-2 text-[14px] leading-relaxed text-[#5c5c5c]">
-            Guests send cash gifts straight to this account by bank transfer.
+            Guests send cash gifts straight to this account, by bank transfer or card.
           </p>
         )}
 
@@ -237,30 +260,50 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
                 <span className="grid size-[38px] place-items-center rounded-[10px] bg-[#dcf4f9]">
                   <BuildingsIcon className="size-5 text-teal" />
                 </span>
-                <span className="text-[14px] font-medium tracking-[0.2px] text-[#0e0e0e]">{bank}</span>
+                <span className={`text-[14px] font-medium tracking-[0.2px] ${bank ? "text-[#0e0e0e]" : "text-[#b9b9b9]"}`}>
+                  {bank?.name ?? "Choose your bank"}
+                </span>
               </span>
               <ChevronDown className={`size-[18px] text-[#8a8a8a] transition ${bankOpen ? "rotate-180" : ""}`} />
             </button>
             {bankOpen && (
-              <div className="absolute z-10 mt-2 max-h-[240px] w-full overflow-y-auto rounded-[16px] border border-[#eff3f2] bg-white py-1 shadow-[0_18px_40px_-20px_rgba(0,0,0,0.3)]">
-                {BANKS.map((b) => (
-                  <button
-                    key={b}
-                    type="button"
-                    onClick={() => {
-                      setBank(b);
-                      setBankOpen(false);
-                    }}
-                    className={`flex w-full items-center gap-2 px-4 py-3 text-left text-[14px] transition hover:bg-black/[0.03] ${
-                      b === bank ? "font-medium text-teal" : "text-[#1c1611]"
-                    }`}
-                  >
-                    <span className="grid size-7 place-items-center rounded-[8px] bg-[#dcf4f9]">
-                      <BuildingsIcon className="size-4 text-teal" />
-                    </span>
-                    {b}
-                  </button>
-                ))}
+              <div className="absolute z-10 mt-2 w-full overflow-hidden rounded-[16px] border border-[#eff3f2] bg-white shadow-[0_18px_40px_-20px_rgba(0,0,0,0.3)]">
+                <div className="border-b border-[#f0f0f0] p-2">
+                  <input
+                    autoFocus
+                    value={bankQuery}
+                    onChange={(e) => setBankQuery(e.target.value)}
+                    placeholder="Search banks"
+                    aria-label="Search banks"
+                    className="h-[40px] w-full rounded-[12px] bg-[#fafafa] px-3 text-[14px] text-[#1a1a1a] outline-none placeholder:text-[#b9b9b9]"
+                  />
+                </div>
+                <div className="max-h-[240px] overflow-y-auto py-1">
+                  {shownBanks.length === 0 && (
+                    <p className="px-4 py-3 text-[13px] text-[#8a8a8a]">
+                      {banks.length ? "No bank matches that." : "Loading banks…"}
+                    </p>
+                  )}
+                  {shownBanks.map((b) => (
+                    <button
+                      key={b.code}
+                      type="button"
+                      onClick={() => {
+                        setBank(b);
+                        setBankOpen(false);
+                        setBankQuery("");
+                      }}
+                      className={`flex w-full items-center gap-2 px-4 py-3 text-left text-[14px] transition hover:bg-black/[0.03] ${
+                        b.code === bank?.code ? "font-medium text-teal" : "text-[#1c1611]"
+                      }`}
+                    >
+                      <span className="grid size-7 shrink-0 place-items-center rounded-[8px] bg-[#dcf4f9]">
+                        <BuildingsIcon className="size-4 text-teal" />
+                      </span>
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -272,7 +315,11 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
             <input
               inputMode="numeric"
               value={account}
-              onChange={(e) => setAccount(e.target.value.replace(/[^\d]/g, "").slice(0, 10))}
+              onChange={(e) => {
+                setAccount(e.target.value.replace(/[^\d]/g, "").slice(0, 10));
+                setLookup("idle");
+                setAccountName("");
+              }}
               placeholder="Enter 10-digit account number"
               className="h-[64px] w-full rounded-[16px] border border-[#edeceb] bg-[#fafafa] px-4 text-[16px] font-medium text-[#1a1a1a] outline-none transition placeholder:text-[#b9b9b9] focus:border-teal"
             />
@@ -281,13 +328,25 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
 
         <div className="mt-[18px] flex flex-col gap-[14px]">
           <label className="text-[14px] font-medium tracking-[-0.66px] text-[#221a10]">Account Name</label>
-          <input
-            value={accountName}
-            onChange={(e) => setAccountName(e.target.value.slice(0, 140))}
-            placeholder="Name on the account"
-            autoComplete="name"
-            className="h-[64px] w-full rounded-[16px] border border-[#edeceb] bg-[#fafafa] px-4 text-[16px] font-medium text-[#1a1a1a] outline-none transition placeholder:text-[#b9b9b9] focus:border-teal"
-          />
+          {/* Filled in from the bank, so gifts can't go to a mistyped account. */}
+          <div
+            aria-live="polite"
+            className={`flex h-[64px] w-full items-center rounded-[16px] border px-4 text-[16px] font-medium ${
+              lookup === "found"
+                ? "border-[#cbe7f0] bg-[#f0f7f9] text-[#1a1a1a]"
+                : lookup === "missing"
+                  ? "border-[#f5d0c9] bg-[#fff5f3] text-[#a3321f]"
+                  : "border-[#edeceb] bg-[#fafafa] text-[#b9b9b9]"
+            }`}
+          >
+            {lookup === "found"
+              ? accountName
+              : lookup === "checking"
+                ? "Checking with your bank…"
+                : lookup === "missing"
+                  ? "We couldn’t find that account. Check the number and the bank."
+                  : "Appears once you choose your bank and enter the number"}
+          </div>
           {bankErr && <p role="alert" className="text-[13px] text-[#c0392b]">{bankErr}</p>}
         </div>
 
@@ -304,7 +363,7 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
       <FormShell modal={modal} onBack={close}>
         <h1 className="font-dote text-[28px] font-medium tracking-[-0.4px] text-[#1c1611]">Withdraw</h1>
         <p className="mt-2 text-[15px] leading-[22px] text-[#8a8177]">
-          How much would you like to withdraw to {bank}?
+          How much would you like to withdraw to {bank?.name ?? "your bank"}?
         </p>
 
         <div className="mt-[18px] flex flex-col gap-6 rounded-[16px] border border-[#e5e5e5] bg-white p-4">
@@ -372,7 +431,7 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
         subtitle={
           <>
             {`₦${amount.toLocaleString()} on its way to `}
-            <span className="font-bold">{accountName.trim() || bank}</span>
+            <span className="font-bold">{accountName.trim() || bank?.name}</span>
           </>
         }
         rows={[
@@ -380,7 +439,7 @@ export function WalletWithdraw({ onClose }: { onClose?: () => void } = {}) {
           { label: "Date", value: txDate() },
           { label: "Transaction ID", value: txRef() },
           { label: "Transaction type", value: "Transfer_out" },
-          { label: "Bank", value: bank },
+          { label: "Bank", value: bank?.name ?? "Not added" },
           { label: "Account", value: account ? `••••${account.slice(-4)}` : "Not added" },
           { label: "Balance before", value: `₦${avail.toLocaleString()}` },
           { label: "Balance after", value: `₦${Math.max(0, avail - amount).toLocaleString()}` },

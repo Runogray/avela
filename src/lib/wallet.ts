@@ -12,8 +12,18 @@ export interface WalletBalance {
 
 export interface BankAccount {
   bank_name: string;
+  /** The bank's code (from listBanks); needed to pay into the account. */
+  bank_code?: string;
   account_number: string;
-  account_name: string;
+  /** Filled by the bank's lookup on save, not typed. */
+  account_name?: string;
+  /** Guests can pay this host by card (Paystack is set up for the account). */
+  card_ready?: boolean;
+}
+
+export interface Bank {
+  name: string;
+  code: string;
 }
 
 export type LedgerKind = "gift_in" | "settle" | "withdrawal" | "fee" | "reversal";
@@ -68,8 +78,19 @@ export function setWithdrawalPin(pin: string) {
 export function getBankAccount() {
   return apiFetch<BankAccount | null>("/wallet/bank-account/");
 }
-export function saveBankAccount(body: BankAccount) {
+export function saveBankAccount(body: { bank_name: string; bank_code: string; account_number: string }) {
   return apiFetch<BankAccount>("/wallet/bank-account/", { method: "PUT", body });
+}
+/** Nigerian banks with their codes. */
+export function listBanks() {
+  return apiFetch<Bank[]>("/wallet/banks/");
+}
+/** The name on an account, from the bank (404 if it can't be found). */
+export function resolveAccount(bankCode: string, accountNumber: string) {
+  return apiFetch<{ account_name: string }>("/wallet/resolve-account/", {
+    method: "POST",
+    body: { bank_code: bankCode, account_number: accountNumber },
+  });
 }
 
 export function topUp(amountKobo: number) {

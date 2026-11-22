@@ -294,6 +294,8 @@ export interface PublicApiEvent {
   gallery: string[];
   /** The host has a bank account, so cash gifts can be paid by transfer. */
   accepts_transfers: boolean;
+  /** Guests can also pay by card, USSD or bank on Paystack (straight to the host). */
+  accepts_card?: boolean;
 }
 
 /** Public read of a published event by slug (guest invite page). */
@@ -346,6 +348,27 @@ export interface TransferDetails {
   account_name: string;
 }
 
+/** What a card gift costs the guest: the gift plus Paystack's fee. */
+export function cardGiftFee(slug: string, amountKobo: number) {
+  return apiFetch<{ amount_kobo: number; fee_kobo: number; total_kobo: number }>(
+    `/events/${slug}/card-fee/?amount_kobo=${amountKobo}`,
+    { auth: false },
+  );
+}
+
+/** Guest pays by card, USSD or bank on Paystack: returns the page to pay on.
+ *  The gift goes straight to the host's bank; the guest comes back to their gift page. */
+export function startCardGift(
+  slug: string,
+  body: { amount_kobo: number; giver_name: string; giver_email?: string; goal_id?: string | null; wishlist_item_id?: string | null },
+) {
+  return apiFetch<{ gift_id: string; gift_token: string; fee_kobo: number; total_kobo: number; checkout_url: string }>(
+    `/events/${slug}/card-gifts/`,
+    // Paystack brings the guest back to this site (the API only honours sites it trusts).
+    { method: "POST", body: { ...body, return_origin: window.location.origin }, auth: false },
+  );
+}
+
 /** Guest starts a cash gift: records it as pending and returns where to pay. */
 export function startTransferGift(
   slug: string,
@@ -376,6 +399,8 @@ export interface HostTransfer {
   amount_kobo: number;
   reference: string;
   status: "initiated" | "paid" | "failed" | "reversed";
+  /** "gateway" = paid by card on Paystack (straight to the host); else a bank transfer. */
+  method?: "transfer" | "gateway";
   goal_id: string | null;
   wishlist_item_id: string | null;
   for_name: string;
@@ -464,6 +489,7 @@ export function publicEventToFlow(e: PublicApiEvent) {
     gallery: [e.cover_image, ...(e.gallery || [])].filter(Boolean) as string[],
     items,
     acceptsTransfers: !!e.accepts_transfers,
+    acceptsCard: !!e.accepts_card,
   };
 }
 

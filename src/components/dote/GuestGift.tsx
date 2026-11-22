@@ -105,12 +105,14 @@ export function GuestGift({ token }: { token: string }) {
   const title = gift.item?.name || gift.goal?.name || "Cash gift";
   const declined = gift.stage === "not_received";
   const received = gift.stage === "received";
+  const byCard = gift.method === "card";
+  const paying = gift.stage === "paying";
 
   const steps: { label: string; when: string; done: boolean }[] = [
     {
-      label: cash ? "You sent it" : gift.stage === "held" ? "You’re buying it" : "You bought it",
+      label: byCard ? "You paid by card" : cash ? "You sent it" : gift.stage === "held" ? "You’re buying it" : "You bought it",
       when: fmtWhen(gift.sent_at),
-      done: gift.stage !== "started" && gift.stage !== "held",
+      done: gift.stage !== "started" && gift.stage !== "held" && !paying,
     },
     { label: `${host} received it`, when: fmtWhen(gift.received_at), done: received },
     { label: `${host} said thank you`, when: fmtWhen(gift.thanked_at), done: !!gift.thanked_at },
@@ -160,7 +162,9 @@ export function GuestGift({ token }: { token: string }) {
             <p className="text-[17px] font-medium leading-[1.3] tracking-[-0.5px] text-[#1c1611]">{title}</p>
             <p className="mt-1 text-[13px] leading-[1.5] text-[#6e6558]">
               {cash
-                ? `${naira(gift.amount_kobo)} by bank transfer${gift.reference ? ` · Ref ${gift.reference}` : ""}`
+                ? byCard
+                  ? `${naira(gift.amount_kobo)} paid by card${gift.fee_kobo ? ` (+ ${naira(gift.fee_kobo)} fee)` : ""}`
+                  : `${naira(gift.amount_kobo)} by bank transfer${gift.reference ? ` · Ref ${gift.reference}` : ""}`
                 : "You bought this gift from the wishlist"}
             </p>
           </div>
@@ -168,7 +172,29 @@ export function GuestGift({ token }: { token: string }) {
 
         {/* where it is */}
         <section className="flex flex-col gap-4 rounded-[20px] border border-[#e8f1f3] bg-white p-[18px]">
-          {declined ? (
+          {paying ? (
+            <div className="flex flex-col gap-3 rounded-[14px] border border-[#f1e0bd] bg-[#fffaf0] px-4 py-3 text-[14px] leading-relaxed text-[#7a5a1e]">
+              <p>
+                We&rsquo;re waiting for Paystack to confirm your payment. If you finished paying, this usually takes a
+                few seconds. If you closed the payment page, nothing was charged; you can give again from the event.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="h-[38px] rounded-[50px] bg-teal px-4 text-[13px] font-medium text-teal-ink transition hover:brightness-95"
+                >
+                  Check again
+                </button>
+                <a
+                  href={`/i/${ev.slug}`}
+                  className="flex h-[38px] items-center rounded-[50px] border border-teal/40 bg-white px-4 text-[13px] font-medium text-teal transition hover:bg-teal/5"
+                >
+                  Back to the event
+                </a>
+              </div>
+            </div>
+          ) : declined ? (
             <div className="rounded-[14px] border border-[#f1e0bd] bg-[#fffaf0] px-4 py-3 text-[14px] leading-relaxed text-[#7a5a1e]">
               {`${host} hasn’t received this transfer. If you sent it, check with your bank that it went through. If you haven’t sent it yet, you can give again from the event page.`}
             </div>
@@ -203,6 +229,9 @@ export function GuestGift({ token }: { token: string }) {
                           ? `${host} will confirm once the transfer lands in their account.`
                           : `${host} will confirm once the gift arrives.`}
                       </p>
+                    )}
+                    {s.done && i === 1 && byCard && (
+                      <p className="text-[13px] leading-relaxed text-[#6e6558]">Paid straight into their bank account.</p>
                     )}
                     {!s.done && i === 0 && (
                       <p className="text-[13px] leading-relaxed text-[#6e6558]">
